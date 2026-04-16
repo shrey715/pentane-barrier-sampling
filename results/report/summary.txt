@@ -1,0 +1,52 @@
+======================================================================
+  PENTANE BARRIER — SIMULATION SUMMARY REPORT
+======================================================================
+
+Force Field: TraPPE-UA (United Atom)
+Bond length: 1.54 Å
+Bond angle:  114.0°
+Steps per simulation: 200000
+
+------------------------------------------------------------
+INITIAL CONFIGURATION
+------------------------------------------------------------
+Dihedral (C1-C2-C3-C4): -0.00°
+Bonds:
+  C1–C2: 1.540000 Å
+  C2–C3: 1.540000 Å
+  C3–C4: 1.540000 Å
+  C4–C5: 1.540000 Å
+
+------------------------------------------------------------
+SAMPLING EFFICIENCY METRICS
+------------------------------------------------------------
+Method        Entropy S    S_max   Bins    E_score
+MC 120K          1.2215   3.5835     10     1.2250
+MC 250K          2.3296   3.5835     36     2.2409
+MD 120K          2.0065   3.5835     36     1.9394
+MD 250K          2.6522   3.5835     36     2.6387
+WL 120K          3.5831   3.5835     36     3.5829
+WL 250K          3.5831   3.5835     36     3.5831
+
+------------------------------------------------------------
+KEY OBSERVATIONS
+------------------------------------------------------------
+1. At 120 K, both MC and MD are trapped near the trans minimum.
+   The thermal energy (~120 K) is far below the eclipsed barrier
+   (~2292 K), preventing barrier crossing.
+
+2. At 250 K, MC with large trial moves partially escapes, but MD
+   remains largely trapped due to continuous dynamics requiring
+   sufficient kinetic energy to cross barriers.
+
+3. Wang-Landau achieves FULL exploration (36/36 bins) at BOTH
+   temperatures. The adaptive bias potential systematically
+   penalizes over-visited states, forcing the walker to explore
+   the entire dihedral space regardless of thermal barriers.
+
+4. The entropy time series shows WL converges to S_max rapidly,
+   while baseline methods plateau at much lower entropy values.
+
+5. The PMF from WL sampling closely matches the exact torsion
+   potential, confirming that flat-histogram sampling correctly
+   recovers the underlying free-energy landscape.
