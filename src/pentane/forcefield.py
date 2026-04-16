@@ -86,7 +86,8 @@ def torsion_energy(phi: ArrayLike) -> np.ndarray:
 
 def torsion_force(phi: ArrayLike) -> np.ndarray:
     """
-    Compute the torsion torque τ = −dU/dφ.
+    Compute dU/dphi (the torsional gradient).
+    Note: md.py negates this to obtain the restoring torque −dU/dφ.
 
     Parameters
     ----------
