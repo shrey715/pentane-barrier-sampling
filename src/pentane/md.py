@@ -75,12 +75,13 @@ def nvt_md_simulation(
 
     Notes
     -----
-    The torque is converted from Kelvin/radian to internal MD units
-    (amu*Ang^2/ps^2) via:
-        F_internal = tau_K * k_B[kJ/(mol*K)] / unit_conv[kJ*mol^-1 per amu*Ang^2*ps^-2]
+    Unit conversion: torsion_force() returns τ = −dU/dφ in Kelvin/radian.
+    Converting to internal MD units (amu·Å²/ps²):
 
-    Note the sign: torsion_force() returns -dU/dphi (see forcefield module),
-    so we multiply by -1 here to get the physical torque in MD units.
+        F_ang = τ [K/rad] × k_B [kJ/(mol·K)] / unit_conv [kJ·mol⁻¹ per amu·Å²·ps⁻²]
+
+    torsion_force() already carries the correct sign (it returns −dU/dφ),
+    so NO additional negation is applied here.
     """
     rng = np.random.default_rng(seed)
 
@@ -97,15 +98,16 @@ def nvt_md_simulation(
 
     for i in range(n_steps):
         # --- Half-step velocity update ---
-        # torsion_force returns -dU/dphi in K/rad; convert to amu*Ang^2/ps^2
-        F_ang = -torsion_force(phi) * KB_KJ_MOL / UNIT_CONV
+        # torsion_force returns τ = −dU/dφ in K/rad; convert to amu·Å²/ps²
+        # No extra negation: torsion_force already gives the physical torque.
+        F_ang = torsion_force(phi) * KB_KJ_MOL / UNIT_CONV
         omega += 0.5 * dt * (F_ang / I_EFF - xi * omega)
 
         # --- Full-step position update ---
         phi = (phi + dt * omega + np.pi) % (2.0 * np.pi) - np.pi
 
         # --- Recompute force at new position ---
-        F_ang = -torsion_force(phi) * KB_KJ_MOL / UNIT_CONV
+        F_ang = torsion_force(phi) * KB_KJ_MOL / UNIT_CONV
 
         # --- First half-step thermostat update ---
         KE = 0.5 * I_EFF * omega**2
