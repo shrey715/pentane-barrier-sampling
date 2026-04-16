@@ -34,7 +34,7 @@ Modified Velocity Verlet with half-step thermostat updates:
 
 import numpy as np
 
-from pentane.forcefield import (
+from .forcefield import (
     I_EFF,
     KB_KJ_MOL,
     UNIT_CONV,
