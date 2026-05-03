@@ -1,147 +1,109 @@
 """
-Analysis Module — Sampling Metrics and Free-Energy Profiles
-============================================================
+analysis.py — Statistical analysis of dihedral trajectories.
 
-Provides quantitative tools to evaluate the sampling efficiency of
-different simulation methods:
+Public API
+----------
+exploration_entropy(phi_traj, n_bins=36)  -> float
+    Shannon entropy of the sampled dihedral distribution.
 
-1. **Exploration entropy** S — measures how uniformly the dihedral
-   space is sampled. S = −Σ Pᵢ ln Pᵢ, with S_max = ln(N_bins).
+early_exploration_score(phi_traj, n_bins=36)  -> float
+    Time-averaged cumulative entropy: E = (1/T) Σ_{t=1}^{T} S(t).
 
-2. **Early exploration score** E — time-averaged entropy, rewarding
-   methods that discover conformations sooner.
-
-3. **Potential of Mean Force (PMF)** — free-energy profile F(φ)
-   obtained by Boltzmann inversion of the sampled probability density:
-   F(φ) = −T · ln P(φ) + const.
-
-4. **Bin occupancy** — fraction of histogram bins visited at least once.
+boltzmann_pmf(phi_traj, T, n_bins=36)  -> (bin_centres_rad, F_K)
+    PMF from Boltzmann inversion of the sampled histogram.
+    F(φ) = −T ln P(φ) + C,  minimum set to zero.
 """
-
 import numpy as np
 
-# Standard bin edges: 36 bins of 10° each spanning [−180°, 180°]
-N_BINS: int = 36
-BIN_EDGES_DEG: np.ndarray = np.linspace(-180.0, 180.0, N_BINS + 1)
-BIN_CENTERS_DEG: np.ndarray = 0.5 * (BIN_EDGES_DEG[:-1] + BIN_EDGES_DEG[1:])
-S_MAX: float = np.log(N_BINS)  # ≈ 3.584 (uniform distribution entropy)
 
-
-def compute_entropy(dihedrals_deg: np.ndarray) -> float:
+def exploration_entropy(phi_traj: np.ndarray, n_bins: int = 36) -> float:
     """
-    Compute the exploration entropy of a dihedral trajectory.
+    Shannon exploration entropy of the dihedral distribution.
+
+    S = −Σᵢ Pᵢ ln Pᵢ    (natural log, nats)
 
     Parameters
     ----------
-    dihedrals_deg : ndarray
-        Dihedral angle trajectory in degrees.
+    phi_traj : np.ndarray, shape (n_steps,)   [rad]
+    n_bins   : int   Number of histogram bins over [-π, π]
 
     Returns
     -------
-    S : float
-        Shannon entropy S = −Σ Pᵢ ln Pᵢ.  Range: [0, ln(36) ≈ 3.584].
+    S : float   Entropy [nats]
     """
-    hist, _ = np.histogram(dihedrals_deg, bins=BIN_EDGES_DEG)
-    P = hist / hist.sum()
-    P_nonzero = P[P > 0]
-    return float(-np.sum(P_nonzero * np.log(P_nonzero)))
+    counts, _ = np.histogram(phi_traj, bins=n_bins, range=(-np.pi, np.pi))
+    probs = counts / counts.sum()
+    # Only include bins with non-zero probability
+    probs = probs[probs > 0]
+    return float(-np.sum(probs * np.log(probs)))
 
 
-def compute_entropy_timeseries(
-    dihedrals_deg: np.ndarray,
-    chunk: int = 500,
+def early_exploration_score(phi_traj: np.ndarray, n_bins: int = 36) -> float:
+    """
+    Early exploration score: time-average of cumulative entropy.
+
+    E = (1/T) Σ_{t=1}^{T} S(t)
+
+    where S(t) is the exploration entropy of the first t steps.
+    A higher score indicates faster discovery of phase space.
+
+    Parameters
+    ----------
+    phi_traj : np.ndarray, shape (n_steps,)   [rad]
+    n_bins   : int
+
+    Returns
+    -------
+    score : float   [nats]
+    """
+    n = len(phi_traj)
+    edges = np.linspace(-np.pi, np.pi, n_bins + 1)
+    running_counts = np.zeros(n_bins, dtype=float)
+    total_entropy = 0.0
+
+    for t in range(n):
+        # Find bin index for this sample
+        idx = int(np.searchsorted(edges[1:], phi_traj[t]))
+        idx = min(idx, n_bins - 1)
+        running_counts[idx] += 1
+
+        # Compute entropy of current distribution
+        total = running_counts.sum()
+        probs = running_counts[running_counts > 0] / total
+        total_entropy += -np.sum(probs * np.log(probs))
+
+    return total_entropy / n
+
+
+def boltzmann_pmf(
+    phi_traj: np.ndarray, T: float, n_bins: int = 36
 ) -> tuple[np.ndarray, np.ndarray]:
     """
-    Compute the exploration entropy as a function of simulation progress.
+    Potential of mean force (PMF) via Boltzmann inversion of a histogram.
+
+    F(φ) = −T · ln P(φ) + C,   minimum set to zero.
 
     Parameters
     ----------
-    dihedrals_deg : ndarray
-        Full dihedral trajectory in degrees.
-    chunk : int
-        Interval (in steps) at which to evaluate S.
+    phi_traj : np.ndarray, shape (n_steps,)   [rad]
+    T        : float   Temperature [K]
+    n_bins   : int
 
     Returns
     -------
-    steps : ndarray
-        Step numbers at which S was evaluated.
-    S_t : ndarray
-        Exploration entropy at each evaluation point.
+    bin_centres : np.ndarray, shape (n_bins,)   [rad]
+    F_K         : np.ndarray, shape (n_bins,)   [K]
+        PMF in Kelvin (k_B = 1), NaN where no samples were collected.
     """
-    N = len(dihedrals_deg)
-    steps = np.arange(chunk, N + 1, chunk)
-    S_t = np.array([compute_entropy(dihedrals_deg[:t]) for t in steps])
-    return steps, S_t
+    edges = np.linspace(-np.pi, np.pi, n_bins + 1)
+    bin_centres = 0.5 * (edges[:-1] + edges[1:])
+    counts, _ = np.histogram(phi_traj, bins=edges)
 
+    with np.errstate(divide="ignore", invalid="ignore"):
+        pmf = np.where(counts > 0, -T * np.log(counts.astype(float)), np.nan)
 
-def compute_early_exploration_score(
-    dihedrals_deg: np.ndarray,
-    chunk: int = 500,
-) -> float:
-    """
-    Compute the early exploration score E = <S(t)>.
+    # Shift so minimum = 0
+    finite_min = np.nanmin(pmf)
+    pmf = pmf - finite_min
 
-    A higher score indicates faster discovery of conformational states.
-
-    Parameters
-    ----------
-    dihedrals_deg : ndarray
-        Dihedral trajectory in degrees.
-    chunk : int
-        Evaluation interval for the entropy time series.
-
-    Returns
-    -------
-    E : float
-        Mean entropy over the trajectory (early exploration score).
-    """
-    _, S_t = compute_entropy_timeseries(dihedrals_deg, chunk)
-    return float(S_t.mean())
-
-
-def count_bins_visited(dihedrals_deg: np.ndarray) -> int:
-    """
-    Count the number of histogram bins visited at least once.
-
-    Parameters
-    ----------
-    dihedrals_deg : ndarray
-        Dihedral trajectory in degrees.
-
-    Returns
-    -------
-    n_visited : int
-        Number of bins with at least one visit (out of 36).
-    """
-    hist, _ = np.histogram(dihedrals_deg, bins=BIN_EDGES_DEG)
-    return int(np.sum(hist > 0))
-
-
-def compute_pmf(dihedrals_deg: np.ndarray, T: float) -> np.ndarray:
-    """
-    Compute the Potential of Mean Force (PMF) via Boltzmann inversion.
-
-    Parameters
-    ----------
-    dihedrals_deg : ndarray
-        Dihedral trajectory in degrees.
-    T : float
-        Temperature [K].
-
-    Returns
-    -------
-    pmf : ndarray, shape (36,)
-        Free-energy profile F(φ) in Kelvin, shifted so min(F) = 0.
-
-    Notes
-    -----
-    Empty bins are filled with a small pseudocount (1e-10) to avoid
-    log(0). These points will show as very high free energy, correctly
-    indicating unsampled regions.
-    """
-    hist, _ = np.histogram(dihedrals_deg, bins=BIN_EDGES_DEG, density=True)
-    # Avoid log(0) for unvisited bins
-    hist = np.where(hist > 0, hist, 1e-10)
-    pmf = -T * np.log(hist)  # k_B = 1 in Kelvin units
-    pmf -= pmf.min()
-    return pmf
+    return bin_centres, pmf

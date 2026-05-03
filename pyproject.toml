@@ -1,9 +1,9 @@
 [project]
 name = "pentane-simulation"
-version = "1.0.0"
-description = "Molecular Modeling Mini-Project: Escaping the Pentane Barrier using TraPPE-UA force field"
+version = "2.0.0"
+description = "n-Pentane TraPPE-UA: Umbrella Sampling, REUS, and WHAM"
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 dependencies = [
     "numpy>=1.24",
     "matplotlib>=3.7",

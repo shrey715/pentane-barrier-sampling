@@ -1,429 +1,254 @@
 """
-Plotting Module — Publication-Quality Figures
-==============================================
+plotting.py — All matplotlib figures for the pentane barrier sampling project.
 
-Generates all figures required for the pentane barrier mini-project:
+Public API
+----------
+plot_dihedral_timeseries(trajs_dict, out_path)
+plot_baseline_distributions(trajs_dict, cfg, out_path)
+plot_baseline_pmf(trajs_dict, T_list, cfg, out_path)
+plot_entropy_curves(trajs_dict, cfg, out_path)
+plot_us_window_histograms(trajs, phi0s, cfg, out_path)
+plot_wham_pmf(bin_centres, pmf_wham, trajs_dict, T_us, cfg, out_path)
+plot_pmf_comparison(bin_centres, pmf_wham, trajs_dict, T_us, cfg, out_path)
 
-- Torsion potential energy surface U(φ)
-- Initial molecular geometry (3D scatter)
-- Dihedral time series (φ vs step) for all methods
-- Dihedral angle histograms (probability distributions)
-- Exploration entropy time series S(t)
-- Potential of Mean Force (PMF) comparisons
-- Summary bar chart of exploration metrics
-
-All figures are saved as high-resolution PNG files to the specified
-output directory.
+trajs_dict keys: "mc_120", "mc_250", "md_120", "md_250"
+All temperatures in K.  All dihedrals in rad.  PMF in K.
 """
-
-import os
-from pathlib import Path
-
 import numpy as np
+import matplotlib
+matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
+from pathlib import Path
+from pentane.analysis import boltzmann_pmf, exploration_entropy
 
-from pentane.forcefield import torsion_energy
-from pentane.analysis import (
-    BIN_CENTERS_DEG,
-    BIN_EDGES_DEG,
-    S_MAX,
-    compute_entropy,
-    compute_entropy_timeseries,
-    compute_early_exploration_score,
-    compute_pmf,
-    count_bins_visited,
-)
-
-# ---------------------------------------------------------------------------
-# Matplotlib style configuration
-# ---------------------------------------------------------------------------
+# ── Style ───────────────────────────────────────────────────────────────────
 plt.rcParams.update({
-    "figure.facecolor": "white",
-    "axes.facecolor": "#f8f9fa",
-    "axes.grid": True,
-    "grid.alpha": 0.3,
-    "grid.linestyle": "--",
-    "font.family": "serif",
-    "font.size": 11,
-    "axes.labelsize": 13,
-    "axes.titlesize": 14,
-    "legend.fontsize": 10,
     "figure.dpi": 150,
-    "savefig.dpi": 200,
-    "savefig.bbox": "tight",
-    "savefig.pad_inches": 0.15,
+    "figure.facecolor": "#0d1117",
+    "axes.facecolor": "#161b22",
+    "axes.edgecolor": "#30363d",
+    "axes.labelcolor": "#c9d1d9",
+    "axes.titlecolor": "#e6edf3",
+    "axes.grid": True,
+    "grid.color": "#21262d",
+    "grid.linewidth": 0.6,
+    "xtick.color": "#8b949e",
+    "ytick.color": "#8b949e",
+    "text.color": "#c9d1d9",
+    "legend.framealpha": 0.15,
+    "legend.edgecolor": "#30363d",
+    "legend.labelcolor": "#c9d1d9",
+    "lines.linewidth": 1.4,
+    "font.family": "sans-serif",
 })
 
-# Consistent color palette for the three methods
-COLORS = {
-    "MC": "#2196F3",   # blue
-    "MD": "#FF9800",   # orange
-    "WL": "#4CAF50",   # green
-}
+_CMAP  = ["#58a6ff", "#f78166", "#56d364", "#d2a8ff"]   # blue, red, green, purple
+_LABEL = {"mc_120": "MC 120 K", "mc_250": "MC 250 K",
+          "md_120": "MD 120 K", "md_250": "MD 250 K"}
+_RAD2DEG = 180.0 / np.pi
 
 
-def _ensure_dir(path: str | Path) -> Path:
-    """Create directory if it doesn't exist and return as Path."""
-    p = Path(path)
-    p.mkdir(parents=True, exist_ok=True)
-    return p
+def _deg_formatter():
+    return ticker.FuncFormatter(lambda x, _: f"{x:.0f}°")
 
 
-def plot_torsion_potential(output_dir: str | Path) -> str:
-    """
-    Plot the TraPPE-UA torsion potential U(φ) for n-pentane.
-
-    Labels the trans minimum, gauche minima, and eclipsed barriers.
-
-    Returns
-    -------
-    filepath : str
-        Path to the saved figure.
-    """
-    out = _ensure_dir(output_dir)
-    phi_deg = np.linspace(-180, 180, 1000)
-    phi_rad = np.radians(phi_deg)
-    U = torsion_energy(phi_rad)
-
-    fig, ax = plt.subplots(figsize=(10, 5))
-    ax.plot(phi_deg, U, color="#d32f2f", linewidth=2.0)
-    ax.fill_between(phi_deg, U, alpha=0.08, color="#d32f2f")
-
-    # Annotate key states
-    ax.annotate("Trans\n(global min)", xy=(180, 0), xytext=(150, 400),
-                fontsize=9, ha="center",
-                arrowprops=dict(arrowstyle="->", color="gray"))
-    ax.annotate("Trans\n(global min)", xy=(-180, 0), xytext=(-150, 400),
-                fontsize=9, ha="center",
-                arrowprops=dict(arrowstyle="->", color="gray"))
-
-    # Gauche minima
-    gauche_phi = np.radians(60)
-    gauche_E = float(torsion_energy(gauche_phi))
-    ax.annotate(f"Gauche+\n({gauche_E:.0f} K)", xy=(60, gauche_E),
-                xytext=(85, gauche_E + 500), fontsize=9, ha="center",
-                arrowprops=dict(arrowstyle="->", color="gray"))
-    ax.annotate(f"Gauche−\n({gauche_E:.0f} K)", xy=(-60, gauche_E),
-                xytext=(-85, gauche_E + 500), fontsize=9, ha="center",
-                arrowprops=dict(arrowstyle="->", color="gray"))
-
-    # Eclipsed barriers
-    eclipsed_phi = 0.0
-    eclipsed_E = float(torsion_energy(eclipsed_phi))
-    ax.annotate(f"Eclipsed\n({eclipsed_E:.0f} K)", xy=(0, eclipsed_E),
-                xytext=(25, eclipsed_E + 300), fontsize=9, ha="center",
-                arrowprops=dict(arrowstyle="->", color="gray"))
-
-    ax.set_xlabel("Dihedral Angle φ [degrees]")
-    ax.set_ylabel("Torsion Energy U(φ) [K]")
-    ax.set_title("TraPPE-UA Torsion Potential for n-Pentane")
-    ax.set_xlim(-180, 180)
-    ax.set_ylim(-50, max(U) * 1.15)
-    ax.xaxis.set_major_locator(ticker.MultipleLocator(60))
-
-    filepath = str(out / "torsion_potential.png")
-    fig.savefig(filepath)
+def _save(fig, path):
+    Path(path).parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(path, bbox_inches="tight", facecolor=fig.get_facecolor())
     plt.close(fig)
-    print(f"  Saved: {filepath}")
-    return filepath
+    print(f"  saved → {path}")
 
 
-def plot_initial_geometry(coords: np.ndarray, output_dir: str | Path) -> str:
-    """
-    Plot the 3D structure of the initial all-trans pentane configuration.
+# ── 1. Dihedral time series ─────────────────────────────────────────────────
 
-    Parameters
-    ----------
-    coords : ndarray, shape (5, 3)
-        Cartesian coordinates of the 5 UA sites.
+def plot_dihedral_timeseries(trajs_dict: dict, out_path: str):
+    """4-panel dihedral φ₁(t) for MC/MD × 120K/250K."""
+    keys = ["mc_120", "mc_250", "md_120", "md_250"]
+    fig, axes = plt.subplots(2, 2, figsize=(12, 7), sharey=True)
+    fig.suptitle("Dihedral φ₁ Time Series", fontsize=14, color="#e6edf3", y=1.01)
 
-    Returns
-    -------
-    filepath : str
-    """
-    out = _ensure_dir(output_dir)
+    for ax, key, colour in zip(axes.flat, keys, _CMAP):
+        traj = trajs_dict[key]
+        n    = len(traj)
+        ax.plot(np.arange(n), traj * _RAD2DEG, color=colour, lw=0.4, alpha=0.85)
+        ax.set_title(_LABEL[key], fontsize=11)
+        ax.set_xlabel("MC/MD step")
+        ax.set_ylabel("φ₁ [°]")
+        ax.set_ylim(-185, 185)
+        ax.yaxis.set_major_formatter(_deg_formatter())
 
-    fig = plt.figure(figsize=(8, 6))
-    ax = fig.add_subplot(111, projection="3d")
-
-    # Draw bonds
-    ax.plot(coords[:, 0], coords[:, 1], coords[:, 2],
-            "o-", color="#1565C0", markersize=12, linewidth=3,
-            markerfacecolor="#42A5F5", markeredgecolor="#0D47A1",
-            markeredgewidth=1.5)
-
-    # Label atoms
-    labels = ["CH₃", "CH₂", "CH₂", "CH₂", "CH₃"]
-    for i, (label, pos) in enumerate(zip(labels, coords)):
-        ax.text(pos[0], pos[1], pos[2] + 0.15, f"C{i+1}\n({label})",
-                fontsize=9, ha="center", va="bottom")
-
-    ax.set_xlabel("x [Å]")
-    ax.set_ylabel("y [Å]")
-    ax.set_zlabel("z [Å]")
-    ax.set_title("Initial All-Trans n-Pentane Configuration")
-
-    filepath = str(out / "initial_geometry.png")
-    fig.savefig(filepath)
-    plt.close(fig)
-    print(f"  Saved: {filepath}")
-    return filepath
-
-
-def plot_dihedral_timeseries(
-    trajectories: dict[str, np.ndarray],
-    T: float,
-    output_dir: str | Path,
-) -> str:
-    """
-    Plot dihedral angle vs simulation step for multiple methods.
-
-    Parameters
-    ----------
-    trajectories : dict
-        Mapping of method name → dihedral trajectory [degrees].
-    T : float
-        Temperature [K] (for title).
-
-    Returns
-    -------
-    filepath : str
-    """
-    out = _ensure_dir(output_dir)
-    n_methods = len(trajectories)
-
-    fig, axes = plt.subplots(n_methods, 1, figsize=(12, 3.5 * n_methods),
-                             sharex=True)
-    if n_methods == 1:
-        axes = [axes]
-
-    for ax, (name, traj) in zip(axes, trajectories.items()):
-        color_key = name.split()[0]  # "MC", "MD", or "WL"
-        color = COLORS.get(color_key, "#666666")
-
-        # Subsample for plotting efficiency
-        step = max(1, len(traj) // 5000)
-        x = np.arange(0, len(traj), step)
-        y = traj[::step]
-
-        ax.plot(x, y, color=color, alpha=0.6, linewidth=0.5, rasterized=True)
-        ax.set_ylabel("φ [°]")
-        ax.set_ylim(-200, 200)
-        ax.yaxis.set_major_locator(ticker.MultipleLocator(60))
-
-        # Highlight trans/gauche regions
-        ax.axhline(180, color="gray", linestyle=":", alpha=0.4)
-        ax.axhline(-180, color="gray", linestyle=":", alpha=0.4)
-        ax.axhline(60, color="gray", linestyle=":", alpha=0.3)
-        ax.axhline(-60, color="gray", linestyle=":", alpha=0.3)
-        ax.axhline(0, color="gray", linestyle=":", alpha=0.3)
-
-        bins_v = count_bins_visited(traj)
-        ax.set_title(f"{name}  (bins: {bins_v}/36)", fontsize=12)
-
-    axes[-1].set_xlabel("MC/MD Step")
-    fig.suptitle(f"Dihedral Angle Trajectories — T = {T:.0f} K",
-                 fontsize=15, y=1.01)
     fig.tight_layout()
-
-    filepath = str(out / f"dihedral_timeseries_{T:.0f}K.png")
-    fig.savefig(filepath)
-    plt.close(fig)
-    print(f"  Saved: {filepath}")
-    return filepath
+    _save(fig, out_path)
 
 
-def plot_dihedral_histograms(
-    all_trajectories: dict[str, np.ndarray],
-    output_dir: str | Path,
-) -> str:
-    """
-    Plot side-by-side dihedral angle histograms for all methods and temperatures.
+# ── 2. Baseline distributions ───────────────────────────────────────────────
 
-    Parameters
-    ----------
-    all_trajectories : dict
-        Mapping of label → dihedral trajectory [degrees].
-        Labels should be like "MC 120K", "MD 250K", "WL 120K", etc.
+def plot_baseline_distributions(trajs_dict: dict, cfg: dict, out_path: str):
+    """4-panel dihedral histograms."""
+    keys  = ["mc_120", "mc_250", "md_120", "md_250"]
+    n_bins = cfg["simulation"]["n_bins"]
+    edges  = np.linspace(-np.pi, np.pi, n_bins + 1)
+    centres = 0.5 * (edges[:-1] + edges[1:]) * _RAD2DEG
 
-    Returns
-    -------
-    filepath : str
-    """
-    out = _ensure_dir(output_dir)
+    fig, axes = plt.subplots(2, 2, figsize=(12, 7), sharey=False)
+    fig.suptitle("φ₁ Dihedral Distributions", fontsize=14, color="#e6edf3", y=1.01)
 
-    n = len(all_trajectories)
-    ncols = 3
-    nrows = (n + ncols - 1) // ncols
+    for ax, key, colour in zip(axes.flat, keys, _CMAP):
+        traj   = trajs_dict[key]
+        counts, _ = np.histogram(traj, bins=edges)
+        probs  = counts / counts.sum()
+        ax.bar(centres, probs, width=(_RAD2DEG * (edges[1] - edges[0])) * 0.9,
+               color=colour, alpha=0.75, edgecolor="none")
+        ax.set_title(_LABEL[key], fontsize=11)
+        ax.set_xlabel("φ₁ [°]")
+        ax.set_ylabel("Probability")
+        ax.xaxis.set_major_formatter(_deg_formatter())
 
-    fig, axes = plt.subplots(nrows, ncols, figsize=(5 * ncols, 4 * nrows))
-    axes = np.atleast_2d(axes).ravel()
+    fig.tight_layout()
+    _save(fig, out_path)
 
-    for ax, (name, traj) in zip(axes, all_trajectories.items()):
-        color_key = name.split()[0]
-        color = COLORS.get(color_key, "#666666")
 
-        ax.hist(traj, bins=BIN_EDGES_DEG, density=True, color=color,
-                alpha=0.7, edgecolor="white", linewidth=0.5)
-        ax.set_title(name, fontsize=11)
-        ax.set_xlabel("φ [°]")
-        ax.set_ylabel("P(φ)")
+# ── 3. Baseline PMF ─────────────────────────────────────────────────────────
+
+def plot_baseline_pmf(trajs_dict: dict, T_list: list, cfg: dict, out_path: str):
+    """Boltzmann-inversion PMF at both temperatures (MC only)."""
+    n_bins = cfg["simulation"]["n_bins"]
+    fig, axes = plt.subplots(1, 2, figsize=(12, 5), sharey=False)
+    fig.suptitle("Baseline PMF (Boltzmann Inversion)", fontsize=14, color="#e6edf3")
+
+    pairs = [("mc_120", T_list[0], _CMAP[0], "MC 120 K"),
+             ("mc_250", T_list[1], _CMAP[1], "MC 250 K")]
+
+    for ax, (key, T, colour, label) in zip(axes, pairs):
+        traj = trajs_dict[key]
+        centres, pmf = boltzmann_pmf(traj, T, n_bins)
+        ax.plot(centres * _RAD2DEG, pmf, color=colour, lw=2.0)
+        ax.fill_between(centres * _RAD2DEG, pmf,
+                        alpha=0.15, color=colour)
+        ax.set_title(label, fontsize=11)
+        ax.set_xlabel("φ₁ [°]")
+        ax.set_ylabel("F(φ₁) [K]")
+        ax.xaxis.set_major_formatter(_deg_formatter())
         ax.set_xlim(-180, 180)
-        ax.xaxis.set_major_locator(ticker.MultipleLocator(60))
 
-    # Hide unused axes
-    for ax in axes[n:]:
-        ax.set_visible(False)
-
-    fig.suptitle("Dihedral Angle Distributions", fontsize=15, y=1.02)
     fig.tight_layout()
-
-    filepath = str(out / "dihedral_histograms.png")
-    fig.savefig(filepath)
-    plt.close(fig)
-    print(f"  Saved: {filepath}")
-    return filepath
+    _save(fig, out_path)
 
 
-def plot_entropy_timeseries(
-    all_trajectories: dict[str, np.ndarray],
-    output_dir: str | Path,
-    chunk: int = 500,
-) -> str:
-    """
-    Plot exploration entropy S(t) for all methods, showing convergence.
+# ── 4. Entropy curves ───────────────────────────────────────────────────────
 
-    Returns
-    -------
-    filepath : str
-    """
-    out = _ensure_dir(output_dir)
+def plot_entropy_curves(trajs_dict: dict, cfg: dict, out_path: str):
+    """S(t) vs step for all 4 baseline runs."""
+    keys   = ["mc_120", "mc_250", "md_120", "md_250"]
+    n_bins = cfg["simulation"]["n_bins"]
+    edges  = np.linspace(-np.pi, np.pi, n_bins + 1)
 
-    fig, axes = plt.subplots(1, 2, figsize=(14, 5), sharey=True)
+    fig, ax = plt.subplots(figsize=(11, 5))
+    ax.set_title("Exploration Entropy S(t) vs Step", fontsize=13, color="#e6edf3")
+    ax.set_xlabel("MC/MD step")
+    ax.set_ylabel("Shannon entropy S [nats]")
 
-    for temp_label, ax, temp_K in [("120 K", axes[0], 120), ("250 K", axes[1], 250)]:
-        ax.axhline(S_MAX, color="black", linestyle="--", alpha=0.5,
-                   label=f"S_max = {S_MAX:.3f}")
+    for key, colour in zip(keys, _CMAP):
+        traj  = trajs_dict[key]
+        n     = len(traj)
+        # Compute cumulative entropy every 1000 steps for speed
+        stride = max(1, n // 500)
+        checkpoints = np.arange(stride, n + 1, stride)
+        entropies = []
+        for t in checkpoints:
+            counts, _ = np.histogram(traj[:t], bins=edges)
+            probs = counts / counts.sum()
+            probs = probs[probs > 0]
+            entropies.append(-np.sum(probs * np.log(probs)))
+        ax.plot(checkpoints, entropies, color=colour, label=_LABEL[key], lw=1.8)
 
-        for name, traj in all_trajectories.items():
-            if f"{temp_K}K" not in name:
-                continue
-            color_key = name.split()[0]
-            color = COLORS.get(color_key, "#666666")
-
-            steps, S_t = compute_entropy_timeseries(traj, chunk)
-            ax.plot(steps, S_t, color=color, linewidth=1.5, label=name)
-
-        ax.set_xlabel("Step")
-        ax.set_ylabel("Exploration Entropy S")
-        ax.set_title(f"T = {temp_label}")
-        ax.legend(loc="lower right")
-        ax.set_ylim(0, S_MAX * 1.15)
-
-    fig.suptitle("Exploration Entropy Convergence", fontsize=15, y=1.02)
+    # Reference: maximum entropy = ln(n_bins)
+    ax.axhline(np.log(n_bins), ls="--", color="#8b949e", lw=1.0,
+               label=f"S_max = ln({n_bins}) = {np.log(n_bins):.2f}")
+    ax.legend(fontsize=9)
     fig.tight_layout()
-
-    filepath = str(out / "entropy_timeseries.png")
-    fig.savefig(filepath)
-    plt.close(fig)
-    print(f"  Saved: {filepath}")
-    return filepath
+    _save(fig, out_path)
 
 
-def plot_pmf_comparison(
-    trajectories: dict[str, np.ndarray],
-    T: float,
-    output_dir: str | Path,
-) -> str:
-    """
-    Overlay the Potential of Mean Force (PMF) for multiple methods.
+# ── 5. US window histograms ─────────────────────────────────────────────────
 
-    Also plots the exact torsion potential for reference.
+def plot_us_window_histograms(trajs: list, phi0s: np.ndarray,
+                               cfg: dict, out_path: str):
+    """18 overlapping biased histograms, one colour per window."""
+    n_bins = cfg["simulation"]["n_bins"]
+    edges  = np.linspace(-np.pi, np.pi, n_bins + 1)
+    centres = 0.5 * (edges[:-1] + edges[1:]) * _RAD2DEG
 
-    Returns
-    -------
-    filepath : str
-    """
-    out = _ensure_dir(output_dir)
+    cmap = plt.cm.hsv(np.linspace(0, 0.9, len(trajs)))
+    fig, ax = plt.subplots(figsize=(12, 5))
+    ax.set_title("Umbrella Sampling — Biased Window Histograms", fontsize=13, color="#e6edf3")
+    ax.set_xlabel("φ₁ [°]")
+    ax.set_ylabel("Probability")
+    ax.xaxis.set_major_formatter(_deg_formatter())
+
+    for i, (traj, phi0, colour) in enumerate(zip(trajs, phi0s, cmap)):
+        counts, _ = np.histogram(traj, bins=edges)
+        probs = counts / counts.sum()
+        ax.plot(centres, probs, color=colour, lw=1.2, alpha=0.8,
+                label=f"{phi0 * _RAD2DEG:.0f}°" if i % 3 == 0 else None)
+
+    ax.legend(fontsize=7, ncol=3, title="φ₀", title_fontsize=8)
+    ax.set_xlim(-180, 180)
+    fig.tight_layout()
+    _save(fig, out_path)
+
+
+# ── 6. WHAM PMF vs baseline PMF ────────────────────────────────────────────
+
+def plot_wham_pmf(bin_centres: np.ndarray, pmf_wham: np.ndarray,
+                   trajs_dict: dict, T_us: float, cfg: dict, out_path: str):
+    """Unbiased WHAM PMF overlaid on the 120K MC baseline PMF."""
+    n_bins = cfg["simulation"]["n_bins"]
+    mc_traj = trajs_dict["mc_120"]
+    centres_bl, pmf_bl = boltzmann_pmf(mc_traj, T_us, n_bins)
 
     fig, ax = plt.subplots(figsize=(10, 5))
+    ax.set_title("WHAM PMF vs Baseline PMF (120 K)", fontsize=13, color="#e6edf3")
+    ax.set_xlabel("φ₁ [°]")
+    ax.set_ylabel("F(φ₁) [K]")
+    ax.xaxis.set_major_formatter(_deg_formatter())
 
-    # Reference: exact torsion potential
-    phi_exact = np.linspace(-180, 180, 500)
-    U_exact = torsion_energy(np.radians(phi_exact))
-    ax.plot(phi_exact, U_exact, "k--", linewidth=1.5, alpha=0.5,
-            label="Exact U(φ)")
+    ax.plot(bin_centres * _RAD2DEG, pmf_wham, color=_CMAP[3], lw=2.5,
+            label="WHAM (umbrella sampling)")
+    ax.plot(centres_bl * _RAD2DEG, pmf_bl, color=_CMAP[0], lw=2.0,
+            ls="--", label="Baseline MC 120 K")
 
-    for name, traj in trajectories.items():
-        color_key = name.split()[0]
-        color = COLORS.get(color_key, "#666666")
-        pmf = compute_pmf(traj, T)
-        ax.plot(BIN_CENTERS_DEG, pmf, "o-", color=color, markersize=3,
-                linewidth=1.5, label=f"{name} PMF")
-
-    ax.set_xlabel("Dihedral Angle φ [degrees]")
-    ax.set_ylabel("Free Energy F(φ) [K]")
-    ax.set_title(f"Potential of Mean Force — T = {T:.0f} K")
     ax.set_xlim(-180, 180)
-    ax.xaxis.set_major_locator(ticker.MultipleLocator(60))
-    ax.legend()
-
-    filepath = str(out / f"pmf_comparison_{T:.0f}K.png")
-    fig.savefig(filepath)
-    plt.close(fig)
-    print(f"  Saved: {filepath}")
-    return filepath
-
-
-def plot_exploration_summary(
-    all_trajectories: dict[str, np.ndarray],
-    output_dir: str | Path,
-) -> str:
-    """
-    Bar chart summarizing bins visited and exploration entropy for all methods.
-
-    Returns
-    -------
-    filepath : str
-    """
-    out = _ensure_dir(output_dir)
-
-    names = list(all_trajectories.keys())
-    bins_visited = [count_bins_visited(t) for t in all_trajectories.values()]
-    entropies = [compute_entropy(t) for t in all_trajectories.values()]
-    e_scores = [compute_early_exploration_score(t) for t in all_trajectories.values()]
-    bar_colors = [COLORS.get(n.split()[0], "#666666") for n in names]
-
-    fig, axes = plt.subplots(1, 3, figsize=(16, 5))
-
-    # Bins visited
-    axes[0].bar(names, bins_visited, color=bar_colors, edgecolor="white")
-    axes[0].axhline(36, color="black", linestyle="--", alpha=0.4)
-    axes[0].set_ylabel("Bins Visited (out of 36)")
-    axes[0].set_title("Configurational Coverage")
-    axes[0].tick_params(axis="x", rotation=45)
-
-    # Exploration entropy
-    axes[1].bar(names, entropies, color=bar_colors, edgecolor="white")
-    axes[1].axhline(S_MAX, color="black", linestyle="--", alpha=0.4,
-                    label=f"S_max = {S_MAX:.2f}")
-    axes[1].set_ylabel("Exploration Entropy S")
-    axes[1].set_title("Sampling Uniformity")
-    axes[1].legend()
-    axes[1].tick_params(axis="x", rotation=45)
-
-    # Early exploration score
-    axes[2].bar(names, e_scores, color=bar_colors, edgecolor="white")
-    axes[2].set_ylabel("Early Exploration Score E")
-    axes[2].set_title("Speed of Discovery")
-    axes[2].tick_params(axis="x", rotation=45)
-
-    fig.suptitle("Sampling Efficiency Comparison", fontsize=15, y=1.02)
+    ax.legend(fontsize=10)
     fig.tight_layout()
+    _save(fig, out_path)
 
-    filepath = str(out / "exploration_summary.png")
-    fig.savefig(filepath)
-    plt.close(fig)
-    print(f"  Saved: {filepath}")
-    return filepath
+
+# ── 7. PMF comparison side-by-side ─────────────────────────────────────────
+
+def plot_pmf_comparison(bin_centres: np.ndarray, pmf_wham: np.ndarray,
+                         trajs_dict: dict, T_us: float, cfg: dict, out_path: str):
+    """WHAM PMF vs Boltzmann PMF side-by-side panel."""
+    n_bins = cfg["simulation"]["n_bins"]
+    mc_traj = trajs_dict["mc_120"]
+    centres_bl, pmf_bl = boltzmann_pmf(mc_traj, T_us, n_bins)
+
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(13, 5), sharey=False)
+    fig.suptitle("PMF Comparison: WHAM vs Boltzmann Inversion (120 K)",
+                 fontsize=13, color="#e6edf3")
+
+    for ax, pmf, centres, colour, title in [
+        (ax1, pmf_wham,  bin_centres, _CMAP[3], "WHAM PMF"),
+        (ax2, pmf_bl,    centres_bl,  _CMAP[0], "Boltzmann PMF (MC 120 K)"),
+    ]:
+        ax.plot(centres * _RAD2DEG, pmf, color=colour, lw=2.2)
+        ax.fill_between(centres * _RAD2DEG, pmf, alpha=0.12, color=colour)
+        ax.set_title(title, fontsize=11)
+        ax.set_xlabel("φ₁ [°]")
+        ax.set_ylabel("F(φ₁) [K]")
+        ax.xaxis.set_major_formatter(_deg_formatter())
+        ax.set_xlim(-180, 180)
+
+    fig.tight_layout()
+    _save(fig, out_path)

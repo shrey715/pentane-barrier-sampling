@@ -1,21 +1,20 @@
 """
-Pentane Molecular Modeling Package
-==================================
-
-United-Atom (UA) simulation of n-pentane using the TraPPE-UA force field.
-Implements Metropolis Monte Carlo, NVT Molecular Dynamics (Nosé-Hoover),
-and Wang-Landau enhanced sampling to study conformational sampling and
-the "pentane barrier" problem.
-
-Modules
--------
-forcefield : TraPPE-UA torsion potential energy and forces
-geometry   : Molecular geometry construction and dihedral calculation
-mc         : Metropolis Monte Carlo simulation
-md         : NVT Molecular Dynamics with Nosé-Hoover thermostat
-wang_landau: Wang-Landau flat-histogram enhanced sampling
-analysis   : Entropy, PMF, and exploration metrics
-plotting   : Publication-quality figure generation
+__init__.py — Public API for the pentane package.
 """
+from pentane.config_loader import CFG
+from pentane.geometry import build_pentane, calc_dihedral, calc_angle
+from pentane.forcefield import total_energy, torsion_energy, angle_energy, lj_energy
+from pentane.mc import run_mc
+from pentane.md import run_md
+from pentane.umbrella import run_window
+from pentane.wham import run_wham
+from pentane.analysis import exploration_entropy, early_exploration_score, boltzmann_pmf
 
-__version__ = "1.0.0"
+__all__ = [
+    "CFG",
+    "build_pentane", "calc_dihedral", "calc_angle",
+    "total_energy", "torsion_energy", "angle_energy", "lj_energy",
+    "run_mc", "run_md",
+    "run_window", "run_wham",
+    "exploration_entropy", "early_exploration_score", "boltzmann_pmf",
+]

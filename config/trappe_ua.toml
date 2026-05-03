@@ -1,0 +1,91 @@
+# ================================================================
+# TraPPE-UA Force Field — n-Pentane
+# Source: Martin & Siepmann, J. Phys. Chem. B 102, 2569 (1998)
+#         DOI: 10.1021/jp972543+
+#         trappe.oit.umn.edu  (UA parameter database)
+# ================================================================
+
+[molecule]
+name    = "n-pentane"
+n_sites = 5
+# Site types by index:
+#   0 → CH3  (C1, terminal)
+#   1 → CH2  (C2)
+#   2 → CH2  (C3, central)
+#   3 → CH2  (C4)
+#   4 → CH3  (C5, terminal)
+
+# ── Bonds ───────────────────────────────────────────────────────
+# TraPPE-UA: RIGID bonds. No stretch potential. Fixed length only.
+# Martin & Siepmann 1998, Table 1
+[bonds]
+r_CC_ang = 1.54          # C–C bond length [Å]
+
+# ── Angles ──────────────────────────────────────────────────────
+# U_angle = (k_theta / 2) * (theta - theta0)^2
+# Martin & Siepmann 1998, Table 1
+[angles]
+theta0_deg = 114.0       # equilibrium C–C–C angle [degrees]
+k_theta_K  = 62500.0     # force constant [K/rad²]
+                         # (using U = k/2 * dtheta^2 convention)
+
+# ── Torsion ─────────────────────────────────────────────────────
+# U_tors = c0 + c1*(1+cos φ) + c2*(1−cos 2φ) + c3*(1+cos 3φ)
+# Applies to: any CH2–CH2–CH2–CH3 or CH3–CH2–CH2–CH2 sequence
+# Martin & Siepmann 1998, Table 2
+# IMPORTANT: 1-4 nonbonded interactions are ABSORBED into these
+# coefficients. Do NOT add any separate 1-4 LJ terms.
+[torsion]
+c0_K =   0.0
+c1_K = 355.03
+c2_K = -68.19
+c3_K = 791.32
+
+# ── Non-bonded (Lennard-Jones 12-6) ─────────────────────────────
+# U_LJ = 4 * eps * [(sigma/r)^12 - (sigma/r)^6]
+# Martin & Siepmann 1998, Table 1
+# Combining rules (Lorentz-Berthelot):
+#   sigma_ij = (sigma_i + sigma_j) / 2
+#   eps_ij   = sqrt(eps_i * eps_j)
+#
+# Exclusions for n-pentane:
+#   1-2 pairs (bonded):          EXCLUDED
+#   1-3 pairs (angle-separated): EXCLUDED
+#   1-4 pairs (dihedral):        EXCLUDED (absorbed in torsion)
+#   1-5 pair  (C1···C5):         INCLUDED  ← only LJ pair in n-pentane
+[nonbonded]
+eps_CH3_K     = 98.0     # ε/k_B for CH3 [K]
+sigma_CH3_ang = 3.75     # σ for CH3 [Å]
+eps_CH2_K     = 46.0     # ε/k_B for CH2 [K]
+sigma_CH2_ang = 3.95     # σ for CH2 [Å]
+# The C1–C5 pair is CH3···CH3, so:
+#   eps_15   = eps_CH3   = 98.0 K
+#   sigma_15 = sigma_CH3 = 3.75 Å  (same type, combining rule trivial)
+
+# ── Simulation (Baseline) ────────────────────────────────────────
+[simulation]
+temperatures_K    = [120.0, 250.0]
+n_steps           = 200000
+n_bins            = 36               # bins over [-180°, 180°]
+dt_ps             = 0.002            # MD timestep [ps]
+tau_T_ps          = 0.5              # Nosé-Hoover coupling time [ps]
+mc_delta_phi_deg  = 15.0            # max MC dihedral trial move [°]
+
+# ── Umbrella Sampling ────────────────────────────────────────────
+[umbrella]
+# 18 windows spaced 20° apart, covers [-180°, 160°] inclusive
+# with endpoint=False so no duplicate at ±180°
+n_windows           = 18
+# Harmonic bias: U_bias = (k/2)(phi - phi0)^2
+# Rule: k chosen so window half-width ~ 1.5 × spacing
+# sqrt(kT/k) = 0.49 rad (28°) at 120K with k=500 K/rad²
+# This ensures >50% overlap between adjacent windows
+window_k_K_per_rad2 = 500.0
+n_steps_per_window  = 200000
+temperature_K       = 120.0         # US runs at the LOW temperature
+                                    # where trapping is worst
+
+# ── WHAM ─────────────────────────────────────────────────────────
+[wham]
+tolerance  = 1.0e-6
+max_iter   = 10000

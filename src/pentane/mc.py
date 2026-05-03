@@ -1,82 +1,68 @@
 """
-Metropolis Monte Carlo Simulation — Dihedral Sampling
-=====================================================
+mc.py — Baseline NVT Monte Carlo (Metropolis) for n-pentane.
 
-Implements a standard Metropolis Monte Carlo sampler for the backbone
-dihedral angle of n-pentane under the TraPPE-UA torsion potential.
+Public API
+----------
+run_mc(T, cfg, seed=None) -> np.ndarray  shape (n_steps,)
+    Trajectory of phi1 (C1-C2-C3-C4 dihedral) in radians.
 
-The algorithm:
-1. Propose a trial move: φ' = φ + δφ,  δφ ~ U(−step_size, +step_size)
-2. Compute energy change: ΔU = U(φ') − U(φ)
-3. Accept with probability: min(1, exp(−βΔU)),  where β = 1/T
+Algorithm (Frenkel & Smit, Ch. 3 — Metropolis):
+  1. Start from all-trans configuration (phi1 = phi2 = π)
+  2. Propose  phi1_new = phi1 + U(-δ, +δ),  wrapping to (-π, π]
+  3. Rebuild full 3D coords with build_pentane(phi1_new, phi2, cfg)
+  4. Compute  ΔU = total_energy(new) − total_energy(old)
+  5. Accept if ΔU < 0 or random() < exp(−ΔU/T)
+  6. Record phi1 every step
 
-Since energies are in Kelvin and we use k_B = 1, β = 1/T directly.
-
-The dihedral is wrapped to [−π, π] after each move to maintain
-consistent bin assignment.
+Note: phi2 is kept fixed at π (trans) for the baseline.  Only phi1
+(C1-C2-C3-C4) is the order parameter per the project specification.
 """
-
 import numpy as np
+from pentane.geometry import build_pentane, calc_dihedral
+from pentane.forcefield import total_energy
 
-from pentane.forcefield import torsion_energy
+
+def _wrap(phi: float) -> float:
+    """Wrap dihedral to (-π, π]."""
+    return (phi + np.pi) % (2 * np.pi) - np.pi
 
 
-def mc_simulation(
-    T: float,
-    n_steps: int = 200_000,
-    phi_init: float = np.radians(180.0),
-    step_size: float = 0.3,
-    seed: int = 42,
-) -> np.ndarray:
+def run_mc(T: float, cfg: dict, seed: int = None) -> np.ndarray:
     """
-    Run a Metropolis Monte Carlo simulation on the torsion potential.
+    Metropolis NVT Monte Carlo for n-pentane.
 
     Parameters
     ----------
-    T : float
-        Temperature [K].
-    n_steps : int
-        Number of MC steps.
-    phi_init : float
-        Initial dihedral angle [radians].
-    step_size : float
-        Maximum displacement magnitude [radians] for trial moves.
-    seed : int
-        Random number generator seed for reproducibility.
+    T    : float   Temperature [K]
+    cfg  : dict    Loaded trappe_ua.toml dict
+    seed : int     RNG seed for reproducibility (optional)
 
     Returns
     -------
-    dihedrals : ndarray, shape (n_steps,)
-        Dihedral angle trajectory [radians].
+    traj : np.ndarray, shape (n_steps,)
+        phi1 (C1-C2-C3-C4 dihedral) in radians, one value per MC step.
     """
-    rng = np.random.default_rng(seed)
-    beta = 1.0 / T
+    rng   = np.random.default_rng(seed)
+    n     = cfg["simulation"]["n_steps"]
+    delta = np.radians(cfg["simulation"]["mc_delta_phi_deg"])
+    beta  = 1.0 / T
 
-    phi = phi_init
-    E = float(torsion_energy(phi))
+    # Start at all-trans: phi1 = phi2 = π
+    phi1  = np.pi
+    phi2  = np.pi
+    coords = build_pentane(phi1, phi2, cfg)
+    E_old  = total_energy(coords)
 
-    dihedrals = np.zeros(n_steps)
-    n_accept = 0
+    traj = np.empty(n)
+    for i in range(n):
+        phi1_new = _wrap(phi1 + rng.uniform(-delta, delta))
+        coords_new = build_pentane(phi1_new, phi2, cfg)
+        E_new = total_energy(coords_new)
 
-    for i in range(n_steps):
-        # Propose trial move
-        phi_new = phi + rng.uniform(-step_size, step_size)
-        # Wrap to [−π, π]
-        phi_new = (phi_new + np.pi) % (2.0 * np.pi) - np.pi
+        dE = E_new - E_old
+        if dE < 0.0 or rng.random() < np.exp(-beta * dE):
+            phi1, coords, E_old = phi1_new, coords_new, E_new
 
-        E_new = float(torsion_energy(phi_new))
-        dE = E_new - E
+        traj[i] = phi1
 
-        # Metropolis acceptance criterion
-        if dE < 0 or rng.random() < np.exp(-beta * dE):
-            phi = phi_new
-            E = E_new
-            n_accept += 1
-
-        dihedrals[i] = phi
-
-    acceptance_rate = n_accept / n_steps
-    print(f"  MC @ {T:6.1f} K: acceptance = {acceptance_rate:.3f}, "
-          f"{n_steps} steps")
-
-    return dihedrals
+    return traj

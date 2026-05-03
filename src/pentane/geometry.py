@@ -1,176 +1,122 @@
 """
-Molecular Geometry — n-Pentane Construction and Dihedral Calculation
-====================================================================
+geometry.py — Build 3D coordinates and compute geometric quantities.
 
-Provides functions to:
-1. Build an all-atom (united-atom sites) geometry of n-pentane from
-   internal coordinates (bond lengths, bond angles, dihedral angles)
-   using the Natural Extension Reference Frame (NeRF) algorithm.
-2. Compute the dihedral angle from four Cartesian positions.
-3. Verify bond-length correctness of a generated structure.
+Public API
+----------
+build_pentane(phi1, phi2, cfg) -> np.ndarray  shape (5, 3) [Å]
+calc_dihedral(a, b, c, d)     -> float  [rad], in (-π, π]
+calc_angle(a, b, c)           -> float  [rad], in [0, π]
 
-The NeRF algorithm places each new atom relative to the three preceding
-atoms using local cylindrical coordinates defined by the bond vector,
-bond angle, and dihedral angle.
+All bond lengths and equilibrium angles come from cfg — never hardcoded.
+The dihedral convention is IUPAC: phi = 0 is cis, phi = ±π is trans.
+build_pentane and calc_dihedral are consistent — i.e.
+    calc_dihedral(*build_pentane(phi, phi, cfg)[[0,1,2,3]]) ≈ phi
 """
-
 import numpy as np
 
-from pentane.forcefield import BOND_LENGTH, BOND_ANGLE_RAD
 
-
-def _add_atom(
-    A: np.ndarray,
-    B: np.ndarray,
-    C: np.ndarray,
-    length: float,
-    theta: float,
-    phi: float,
+def _place_atom(
+    A: np.ndarray, B: np.ndarray, C: np.ndarray,
+    r_new: float, theta: float, phi_iupac: float
 ) -> np.ndarray:
     """
-    Place a new atom D given three preceding atoms (A, B, C) and the
-    internal coordinates (bond length, bond angle, dihedral angle).
+    Place atom D at fixed bond length r_new from C, with:
+      • bond angle angle(B, C, D) = theta
+      • IUPAC dihedral dihedral(A, B, C, D) = phi_iupac
 
-    Uses the Natural Extension Reference Frame (NeRF) algorithm to
-    define a local coordinate system from the B->C bond vector and the
-    A-B-C plane normal.
-
-    Parameters
-    ----------
-    A, B, C : ndarray, shape (3,)
-        Cartesian positions of the three reference atoms.
-    length : float
-        Bond length C-D [Angstrom].
-    theta : float
-        Bond angle B-C-D [radians].
-    phi : float
-        Dihedral angle A-B-C-D [radians].
-
-    Returns
-    -------
-    D : ndarray, shape (3,)
-        Cartesian position of the new atom.
+    Standard z-matrix to Cartesian formula (Parsons et al. 2005).
+    phi = 0 → cis (A and D on same side); phi = ±π → trans.
     """
-    BC = C - B
-    bc_hat = BC / np.linalg.norm(BC)
+    bc      = C - B
+    bc_norm = bc / np.linalg.norm(bc)
 
-    AB = B - A
-    n1 = np.cross(AB, BC)
-    norm_n1 = np.linalg.norm(n1)
+    ab = B - A
+    n  = np.cross(ab, bc)
+    n_l = np.linalg.norm(n)
+    n  = n / n_l if n_l > 1e-12 else np.array([0.0, 0.0, 1.0])
 
-    # Handle collinear case: pick an arbitrary perpendicular direction
-    if norm_n1 < 1e-10:
-        n1 = np.array([0.0, 0.0, 1.0])
-    else:
-        n1 = n1 / norm_n1
+    # In-plane perpendicular to bc (defines phi = 0 direction = cis)
+    m = np.cross(n, bc_norm)
 
-    n2 = np.cross(bc_hat, n1)
+    # Deviation from linear chain direction
+    sin_th = np.sin(np.pi - theta)   # > 0
+    cos_th = np.cos(np.pi - theta)   # sign tells us which side of C
 
-    # Displacement vector in the local frame
-    d = length * (
-        np.cos(np.pi - theta) * bc_hat
-        + np.sin(np.pi - theta) * (np.cos(phi) * n2 + np.sin(phi) * n1)
+    d_hat = (
+        cos_th    * bc_norm
+        + sin_th * np.cos(phi_iupac) * m
+        - sin_th * np.sin(phi_iupac) * n
     )
+    return C + r_new * d_hat
 
-    return C + d
 
-
-def build_pentane(
-    phi1: float = np.radians(180.0),
-    phi2: float = np.radians(180.0),
-) -> np.ndarray:
+def build_pentane(phi1: float, phi2: float, cfg: dict) -> np.ndarray:
     """
-    Construct the Cartesian coordinates of n-pentane (5 UA sites) from
-    two backbone dihedral angles.
+    Build n-pentane Cartesian coordinates from IUPAC dihedrals.
 
-    The molecule is built sequentially:
-      C1 at origin -> C2 along +x -> C3 in the xy-plane -> C4 via phi1 -> C5 via phi2
-
-    Parameters
-    ----------
-    phi1 : float, optional
-        Dihedral angle C1-C2-C3-C4 [radians]. Default: pi (trans).
-    phi2 : float, optional
-        Dihedral angle C2-C3-C4-C5 [radians]. Default: pi (trans).
+    phi1 : C1-C2-C3-C4 dihedral [rad], IUPAC convention (π = trans)
+    phi2 : C2-C3-C4-C5 dihedral [rad], IUPAC convention (π = trans)
+    cfg  : loaded trappe_ua.toml dict
 
     Returns
     -------
-    coords : ndarray, shape (5, 3)
-        Cartesian coordinates of the five united-atom sites [Angstrom].
+    coords : np.ndarray, shape (5, 3), [Å]
+        Cartesian positions of C1…C5. Bond lengths and angles enforced
+        exactly from cfg. calc_dihedral(coords[0:4]) recovers phi1.
     """
-    C1 = np.array([0.0, 0.0, 0.0])
-    C2 = np.array([BOND_LENGTH, 0.0, 0.0])
-    C3 = C2 + BOND_LENGTH * np.array([
-        np.cos(np.pi - BOND_ANGLE_RAD),
-        np.sin(np.pi - BOND_ANGLE_RAD),
-        0.0,
-    ])
+    r   = cfg["bonds"]["r_CC_ang"]
+    th  = np.radians(cfg["angles"]["theta0_deg"])
 
-    C4 = _add_atom(C1, C2, C3, BOND_LENGTH, BOND_ANGLE_RAD, phi1)
-    C5 = _add_atom(C2, C3, C4, BOND_LENGTH, BOND_ANGLE_RAD, phi2)
+    # C1 at origin, C2 along +x
+    C1 = np.array([0.0, 0.0, 0.0])
+    C2 = np.array([r, 0.0, 0.0])
+
+    # C3: place in xy-plane with correct angle at C2
+    C3 = C2 + r * np.array([np.cos(np.pi - th), np.sin(np.pi - th), 0.0])
+
+    # C4 and C5: use z-matrix placement with IUPAC dihedral convention
+    C4 = _place_atom(C1, C2, C3, r, th, phi1)
+    C5 = _place_atom(C2, C3, C4, r, th, phi2)
 
     return np.array([C1, C2, C3, C4, C5])
 
 
-def calc_dihedral(coords: np.ndarray) -> float:
+def calc_dihedral(a: np.ndarray, b: np.ndarray,
+                  c: np.ndarray, d: np.ndarray) -> float:
     """
-    Compute the dihedral angle defined by four sequential atom positions.
-
-    Uses the atan2-based formula that gives the signed dihedral angle
-    in the range [-pi, pi].
-
-    Parameters
-    ----------
-    coords : ndarray, shape (4, 3)
-        Cartesian coordinates of four atoms defining the dihedral.
+    IUPAC dihedral angle for atoms a-b-c-d.
 
     Returns
     -------
     phi : float
-        Dihedral angle [radians], in the range [-pi, pi].
+        Dihedral in radians, range (-π, π].
+        phi = 0 is cis; phi = ±π is trans.
     """
-    b1 = coords[1] - coords[0]
-    b2 = coords[2] - coords[1]
-    b3 = coords[3] - coords[2]
+    b1 = b - a
+    b2 = c - b
+    b3 = d - c
 
     n1 = np.cross(b1, b2)
-    n2 = np.cross(b2, b3)
+    n1_l = np.linalg.norm(n1)
+    n1 = n1 / n1_l if n1_l > 1e-12 else n1
 
-    n1 = n1 / np.linalg.norm(n1)
-    n2 = n2 / np.linalg.norm(n2)
+    n2 = np.cross(b2, b3)
+    n2_l = np.linalg.norm(n2)
+    n2 = n2 / n2_l if n2_l > 1e-12 else n2
 
     m1 = np.cross(n1, b2 / np.linalg.norm(b2))
-
     return float(np.arctan2(np.dot(m1, n2), np.dot(n1, n2)))
 
 
-def verify_bonds(
-    coords: np.ndarray,
-    expected: float = BOND_LENGTH,
-    tol: float = 1e-10,
-) -> list:
+def calc_angle(a: np.ndarray, b: np.ndarray, c: np.ndarray) -> float:
     """
-    Verify that all consecutive bond lengths match the expected value.
-
-    Parameters
-    ----------
-    coords : ndarray, shape (N, 3)
-        Cartesian coordinates of N atoms.
-    expected : float
-        Expected bond length [Angstrom].
-    tol : float
-        Tolerance for bond-length deviation.
+    Bond angle at atom b, for the sequence a-b-c.
 
     Returns
     -------
-    bonds : list of (i, j, length) tuples
-        Raises AssertionError if any bond deviates beyond tolerance.
+    theta : float  [rad], in [0, π].
     """
-    bonds = []
-    for i in range(len(coords) - 1):
-        dist = float(np.linalg.norm(coords[i + 1] - coords[i]))
-        bonds.append((i, i + 1, dist))
-        assert abs(dist - expected) < tol, (
-            f"Bond C{i+1}-C{i+2} = {dist:.6f} A, expected {expected:.4f} A"
-        )
-    return bonds
+    ba = a - b
+    bc = c - b
+    cos_t = np.dot(ba, bc) / (np.linalg.norm(ba) * np.linalg.norm(bc))
+    return float(np.arccos(np.clip(cos_t, -1.0, 1.0)))

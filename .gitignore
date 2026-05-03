@@ -33,9 +33,8 @@ uv.lock
 .DS_Store
 Thumbs.db
 
-# Generated results (keep plots and report, exclude large data dumps)
-# Uncomment to exclude if desired:
-# results/
+# Generated results — ignored; run scripts to regenerate
+results/
 
 # Test caches
 .pytest_cache/
@@ -43,3 +42,5 @@ Thumbs.db
 .ruff_cache/
 htmlcov/
 .coverage
+
+tmp/
