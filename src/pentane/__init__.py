@@ -9,6 +9,7 @@ from pentane.md import run_md
 from pentane.umbrella import run_window
 from pentane.wham import run_wham, wham
 from pentane.analysis import exploration_entropy, early_exploration_score, boltzmann_pmf
+from pentane.units import K_to_kJmol, kJmol_to_K, degrees_to_rad, rad_to_degrees, kB_kJ_per_mol
 
 __all__ = [
     "CFG",
@@ -16,5 +17,6 @@ __all__ = [
     "total_energy", "forces_numerical", "bond_energy", "torsion_energy", "angle_energy", "lj_energy",
     "run_mc", "run_md",
     "run_window", "run_wham", "wham",
+    "K_to_kJmol", "kJmol_to_K", "degrees_to_rad", "rad_to_degrees", "kB_kJ_per_mol",
     "exploration_entropy", "early_exploration_score", "boltzmann_pmf",
 ]

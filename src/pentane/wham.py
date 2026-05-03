@@ -56,6 +56,9 @@ def wham(
         denom = np.einsum("i,ij->j", n_i, np.exp((f[:, None] - bias) / T))
         with np.errstate(divide="ignore", invalid="ignore"):
             rho = np.where(denom > 0, n_total / denom, 0.0)
+        rho_sum = np.nansum(rho)
+        if rho_sum > 0.0:
+            rho = rho / rho_sum
 
         f_new = -T * np.log(np.einsum("j,ij->i", rho, np.exp(-bias / T)) * d_phi + 1e-300)
         f_new -= f_new[0]

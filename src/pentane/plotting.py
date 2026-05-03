@@ -226,13 +226,14 @@ def plot_wham_convergence(f_history: np.ndarray, out_path: str):
 
 def plot_wham_pmf(bin_centres: np.ndarray, pmf_wham: np.ndarray,
                    trajs_dict: dict, T_us: float, cfg: dict, out_path: str):
-    """Unbiased WHAM PMF overlaid on the 120K MC baseline PMF."""
+    """Unbiased WHAM PMF overlaid on the matching MC baseline PMF."""
     n_bins = cfg["simulation"]["n_bins"]
-    mc_traj = trajs_dict["mc_120"]
+    mc_key = f"mc_{int(round(T_us))}"
+    mc_traj = trajs_dict[mc_key]
     centres_bl, pmf_bl = boltzmann_pmf(mc_traj, T_us, n_bins)
 
     fig, ax = plt.subplots(figsize=(10, 5))
-    ax.set_title("WHAM PMF vs Baseline PMF (120 K)", fontsize=13, color="#e6edf3")
+    ax.set_title(f"WHAM PMF vs Baseline PMF ({T_us:.0f} K)", fontsize=13, color="#e6edf3")
     ax.set_xlabel("φ₁ [°]")
     ax.set_ylabel("F(φ₁) [K]")
     ax.xaxis.set_major_formatter(_deg_formatter())
@@ -254,11 +255,12 @@ def plot_pmf_comparison(bin_centres: np.ndarray, pmf_wham: np.ndarray,
                          trajs_dict: dict, T_us: float, cfg: dict, out_path: str):
     """WHAM PMF vs Boltzmann PMF side-by-side panel."""
     n_bins = cfg["simulation"]["n_bins"]
-    mc_traj = trajs_dict["mc_120"]
+    mc_key = f"mc_{int(round(T_us))}"
+    mc_traj = trajs_dict[mc_key]
     centres_bl, pmf_bl = boltzmann_pmf(mc_traj, T_us, n_bins)
 
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(13, 5), sharey=False)
-    fig.suptitle("PMF Comparison: WHAM vs Boltzmann Inversion (120 K)",
+    fig.suptitle(f"PMF Comparison: WHAM vs Boltzmann Inversion ({T_us:.0f} K)",
                  fontsize=13, color="#e6edf3")
 
     for ax, pmf, centres, colour, title in [
