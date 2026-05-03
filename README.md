@@ -6,7 +6,7 @@ This project models **n-pentane** in the **United-Atom (UA)** representation usi
 
 ## Project Structure
 
-```
+```txt
 project/
 ├── pyproject.toml          # uv project configuration
 ├── README.md               # This file

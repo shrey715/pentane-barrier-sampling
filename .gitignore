@@ -33,9 +33,6 @@ uv.lock
 .DS_Store
 Thumbs.db
 
-# Generated results — ignored; run scripts to regenerate
-results/
-
 # Test caches
 .pytest_cache/
 .mypy_cache/
