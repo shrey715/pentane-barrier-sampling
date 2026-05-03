@@ -21,6 +21,11 @@ n_sites = 5
 [bonds]
 r_CC_ang = 1.54          # C–C bond length [Å]
 
+[bond_stretch]
+# Mundy et al. 1996, Table 1
+r0_ang          = 1.54
+k_r_K_per_ang2  = 452900.0
+
 # ── Angles ──────────────────────────────────────────────────────
 # U_angle = (k_theta / 2) * (theta - theta0)^2
 # Martin & Siepmann 1998, Table 1
@@ -62,6 +67,10 @@ sigma_CH2_ang = 3.95     # σ for CH2 [Å]
 #   eps_15   = eps_CH3   = 98.0 K
 #   sigma_15 = sigma_CH3 = 3.75 Å  (same type, combining rule trivial)
 
+[masses]
+m_CH3_u = 15.035
+m_CH2_u = 14.027
+
 # ── Simulation (Baseline) ────────────────────────────────────────
 [simulation]
 temperatures_K    = [120.0, 250.0]
@@ -73,9 +82,8 @@ mc_delta_phi_deg  = 15.0            # max MC dihedral trial move [°]
 
 # ── Umbrella Sampling ────────────────────────────────────────────
 [umbrella]
-# 18 windows spaced 20° apart, covers [-180°, 160°] inclusive
-# with endpoint=False so no duplicate at ±180°
-n_windows           = 18
+# 36 windows centered on the 10° bin midpoints: -175°, -165°, ..., +175°
+n_windows           = 36
 # Harmonic bias: U_bias = (k/2)(phi - phi0)^2
 # Rule: k chosen so window half-width ~ 1.5 × spacing
 # sqrt(kT/k) = 0.49 rad (28°) at 120K with k=500 K/rad²

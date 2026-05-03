@@ -1,68 +1,49 @@
 """
-mc.py — Baseline NVT Monte Carlo (Metropolis) for n-pentane.
+mc.py — Cartesian Metropolis Monte Carlo for n-pentane.
 
-Public API
-----------
-run_mc(T, cfg, seed=None) -> np.ndarray  shape (n_steps,)
-    Trajectory of phi1 (C1-C2-C3-C4 dihedral) in radians.
-
-Algorithm (Frenkel & Smit, Ch. 3 — Metropolis):
-  1. Start from all-trans configuration (phi1 = phi2 = π)
-  2. Propose  phi1_new = phi1 + U(-δ, +δ),  wrapping to (-π, π]
-  3. Rebuild full 3D coords with build_pentane(phi1_new, phi2, cfg)
-  4. Compute  ΔU = total_energy(new) − total_energy(old)
-  5. Accept if ΔU < 0 or random() < exp(−ΔU/T)
-  6. Record phi1 every step
-
-Note: phi2 is kept fixed at π (trans) for the baseline.  Only phi1
-(C1-C2-C3-C4) is the order parameter per the project specification.
+The move set keeps a full 3D coordinate array as state and rigidly rotates a
+fragment about a backbone bond axis. The reported observable is the C1-C2-C3-C4
+dihedral trajectory used by the analysis and umbrella-sampling workflow.
 """
 import numpy as np
-from pentane.geometry import build_pentane, calc_dihedral
+
 from pentane.forcefield import total_energy
+from pentane.geometry import build_all_trans, calc_dihedral, rotate_fragment
 
 
 def _wrap(phi: float) -> float:
-    """Wrap dihedral to (-π, π]."""
+    """Wrap a dihedral to (-π, π]."""
     return (phi + np.pi) % (2 * np.pi) - np.pi
 
 
+def _propose_rotation(pos: np.ndarray, rng: np.random.Generator, delta: float) -> np.ndarray:
+    """Propose a rigid fragment rotation about one backbone bond."""
+    angle = rng.uniform(-delta, delta)
+    if rng.random() < 0.5:
+        return rotate_fragment(pos, pos[1], pos[2], [3, 4], angle)
+    return rotate_fragment(pos, pos[2], pos[3], [4], angle)
+
+
 def run_mc(T: float, cfg: dict, seed: int = None) -> np.ndarray:
-    """
-    Metropolis NVT Monte Carlo for n-pentane.
-
-    Parameters
-    ----------
-    T    : float   Temperature [K]
-    cfg  : dict    Loaded trappe_ua.toml dict
-    seed : int     RNG seed for reproducibility (optional)
-
-    Returns
-    -------
-    traj : np.ndarray, shape (n_steps,)
-        phi1 (C1-C2-C3-C4 dihedral) in radians, one value per MC step.
-    """
-    rng   = np.random.default_rng(seed)
-    n     = cfg["simulation"]["n_steps"]
+    """Run Metropolis NVT MC and return the phi1 trajectory."""
+    rng = np.random.default_rng(seed)
+    n = int(cfg["simulation"]["n_steps"])
     delta = np.radians(cfg["simulation"]["mc_delta_phi_deg"])
-    beta  = 1.0 / T
+    beta = 1.0 / T
 
-    # Start at all-trans: phi1 = phi2 = π
-    phi1  = np.pi
-    phi2  = np.pi
-    coords = build_pentane(phi1, phi2, cfg)
-    E_old  = total_energy(coords)
+    pos = build_all_trans(cfg)
+    E_old = total_energy(pos)
 
-    traj = np.empty(n)
+    traj = np.empty(n, dtype=float)
     for i in range(n):
-        phi1_new = _wrap(phi1 + rng.uniform(-delta, delta))
-        coords_new = build_pentane(phi1_new, phi2, cfg)
-        E_new = total_energy(coords_new)
-
+        trial = _propose_rotation(pos, rng, delta)
+        E_new = total_energy(trial)
         dE = E_new - E_old
-        if dE < 0.0 or rng.random() < np.exp(-beta * dE):
-            phi1, coords, E_old = phi1_new, coords_new, E_new
 
-        traj[i] = phi1
+        if dE < 0.0 or rng.random() < np.exp(-beta * dE):
+            pos = trial
+            E_old = E_new
+
+        traj[i] = calc_dihedral(pos[0], pos[1], pos[2], pos[3])
 
     return traj

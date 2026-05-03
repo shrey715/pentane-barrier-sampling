@@ -8,6 +8,7 @@ plot_baseline_distributions(trajs_dict, cfg, out_path)
 plot_baseline_pmf(trajs_dict, T_list, cfg, out_path)
 plot_entropy_curves(trajs_dict, cfg, out_path)
 plot_us_window_histograms(trajs, phi0s, cfg, out_path)
+plot_wham_convergence(f_history, out_path)
 plot_wham_pmf(bin_centres, pmf_wham, trajs_dict, T_us, cfg, out_path)
 plot_pmf_comparison(bin_centres, pmf_wham, trajs_dict, T_us, cfg, out_path)
 
@@ -175,7 +176,7 @@ def plot_entropy_curves(trajs_dict: dict, cfg: dict, out_path: str):
 
 def plot_us_window_histograms(trajs: list, phi0s: np.ndarray,
                                cfg: dict, out_path: str):
-    """18 overlapping biased histograms, one colour per window."""
+    """Overlapping biased histograms, one colour per window."""
     n_bins = cfg["simulation"]["n_bins"]
     edges  = np.linspace(-np.pi, np.pi, n_bins + 1)
     centres = 0.5 * (edges[:-1] + edges[1:]) * _RAD2DEG
@@ -199,7 +200,29 @@ def plot_us_window_histograms(trajs: list, phi0s: np.ndarray,
     _save(fig, out_path)
 
 
-# ── 6. WHAM PMF vs baseline PMF ────────────────────────────────────────────
+# ── 6. WHAM convergence ───────────────────────────────────────────────────
+
+def plot_wham_convergence(f_history: np.ndarray, out_path: str):
+    """Plot the WHAM free-energy offsets versus iteration."""
+    if f_history.ndim != 2 or f_history.size == 0:
+        raise ValueError("f_history must have shape (n_iter, n_windows)")
+
+    fig, ax = plt.subplots(figsize=(11, 5))
+    ax.set_title("WHAM Convergence: Free-Energy Offsets", fontsize=13, color="#e6edf3")
+    ax.set_xlabel("Iteration")
+    ax.set_ylabel(r"$f_i$ [K]")
+
+    n_iter, n_windows = f_history.shape
+    cmap = plt.cm.viridis(np.linspace(0.1, 0.9, n_windows))
+    for i in range(n_windows):
+        ax.plot(np.arange(1, n_iter + 1), f_history[:, i], color=cmap[i], lw=1.0, alpha=0.9)
+
+    ax.set_xlim(1, n_iter)
+    fig.tight_layout()
+    _save(fig, out_path)
+
+
+# ── 7. WHAM PMF vs baseline PMF ────────────────────────────────────────────
 
 def plot_wham_pmf(bin_centres: np.ndarray, pmf_wham: np.ndarray,
                    trajs_dict: dict, T_us: float, cfg: dict, out_path: str):
@@ -225,7 +248,7 @@ def plot_wham_pmf(bin_centres: np.ndarray, pmf_wham: np.ndarray,
     _save(fig, out_path)
 
 
-# ── 7. PMF comparison side-by-side ─────────────────────────────────────────
+# ── 8. PMF comparison side-by-side ─────────────────────────────────────────
 
 def plot_pmf_comparison(bin_centres: np.ndarray, pmf_wham: np.ndarray,
                          trajs_dict: dict, T_us: float, cfg: dict, out_path: str):

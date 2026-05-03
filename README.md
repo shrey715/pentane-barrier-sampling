@@ -2,7 +2,7 @@
 
 ## Overview
 
-This project models **n-pentane** in the **United-Atom (UA)** representation using the **TraPPE-UA** force field. It demonstrates the conformational sampling problem ("pentane barrier") and shows how the **Wang-Landau** enhanced sampling algorithm overcomes it.
+This project models **n-pentane** in the **United-Atom (UA)** representation using the **TraPPE-UA** force field in full Cartesian 3D space. It demonstrates the conformational sampling problem ("pentane barrier") and compares baseline Monte Carlo / molecular dynamics against **umbrella sampling + WHAM**.
 
 ## Project Structure
 
@@ -16,11 +16,13 @@ project/
 │   ├── geometry.py         # Molecular geometry (NeRF algorithm)
 │   ├── mc.py               # Metropolis Monte Carlo
 │   ├── md.py               # NVT MD (Nosé-Hoover thermostat)
-│   ├── wang_landau.py      # Wang-Landau flat-histogram sampling
+│   ├── umbrella.py         # Umbrella sampling windows
+│   ├── wham.py             # WHAM post-processing
 │   ├── analysis.py         # Entropy, PMF, exploration metrics
 │   └── plotting.py         # Publication-quality figure generation
 ├── scripts/
-│   └── run_all.py          # Main driver: runs everything end-to-end
+│   ├── run_baseline.py     # Baseline MC/MD pipeline
+│   └── run_umbrella.py     # Umbrella sampling + WHAM pipeline
 └── results/                # Generated outputs
     ├── plots/              # All figures (PNG)
     └── report/             # Summary report (TXT)
@@ -32,23 +34,26 @@ project/
 # Install dependencies with uv
 uv sync
 
-# Run the complete pipeline
-uv run python scripts/run_all.py
+# Run the baseline pipeline
+uv run python scripts/run_baseline.py
+
+# Run umbrella sampling + WHAM
+uv run python scripts/run_umbrella.py
 ```
 
 ## Methods Compared
 
 | Method | Type | Description |
 |--------|------|-------------|
-| **Metropolis MC** | Baseline | Random dihedral perturbation with Boltzmann acceptance |
-| **NVT MD** | Baseline | Velocity Verlet + Nosé-Hoover thermostat |
-| **Wang-Landau** | Enhanced | Flat-histogram MC with adaptive bias potential |
+| **Metropolis MC** | Baseline | Full Cartesian fragment rotations with Boltzmann acceptance |
+| **NVT MD** | Baseline | Full Cartesian velocity Verlet + Nosé-Hoover thermostat |
+| **Umbrella sampling + WHAM** | Enhanced | Biased window sampling with histogram reweighting |
 
 ## Key Results
 
-- At **120 K**, baseline methods are trapped near the trans minimum. Wang-Landau explores all 36 bins.
-- At **250 K**, MC partially escapes barriers. Wang-Landau still achieves full coverage.
-- The Wang-Landau PMF closely reproduces the exact torsion potential.
+- At **120 K**, baseline methods remain trapped near the trans minimum.
+- Umbrella sampling with WHAM reconstructs the unbiased PMF across all 36 bins.
+- The full Cartesian model includes bond stretch, angle bend, torsion, and the allowed C1···C5 Lennard-Jones interaction.
 
 ## Dependencies
 
@@ -60,5 +65,6 @@ uv run python scripts/run_all.py
 ## References
 
 - Martin & Siepmann, J. Phys. Chem. B, 102, 2569 (1998) — TraPPE-UA force field
-- Wang & Landau, Phys. Rev. Lett. 86, 2050 (2001) — Wang-Landau algorithm
+- Mundy et al., Faraday Discuss. 104, 123 (1996) — bond stretch and angle parameters
+- Kumar et al., J. Comput. Chem. 13, 1011 (1992) — WHAM
 # MoMoS_Project

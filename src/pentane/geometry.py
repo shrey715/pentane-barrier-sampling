@@ -3,9 +3,12 @@ geometry.py — Build 3D coordinates and compute geometric quantities.
 
 Public API
 ----------
-build_pentane(phi1, phi2, cfg) -> np.ndarray  shape (5, 3) [Å]
-calc_dihedral(a, b, c, d)     -> float  [rad], in (-π, π]
-calc_angle(a, b, c)           -> float  [rad], in [0, π]
+place_atom(A, B, C, r, theta, phi) -> np.ndarray  shape (3,) [Å]
+build_all_trans(cfg)               -> np.ndarray  shape (5, 3) [Å]
+build_pentane(phi1, phi2, cfg)     -> np.ndarray  shape (5, 3) [Å]
+rotate_fragment(pos, axis_start, axis_end, atom_indices, angle) -> np.ndarray
+calc_dihedral(a, b, c, d)          -> float  [rad], in (-π, π]
+calc_angle(a, b, c)                -> float  [rad], in [0, π]
 
 All bond lengths and equilibrium angles come from cfg — never hardcoded.
 The dihedral convention is IUPAC: phi = 0 is cis, phi = ±π is trans.
@@ -15,7 +18,7 @@ build_pentane and calc_dihedral are consistent — i.e.
 import numpy as np
 
 
-def _place_atom(
+def place_atom(
     A: np.ndarray, B: np.ndarray, C: np.ndarray,
     r_new: float, theta: float, phi_iupac: float
 ) -> np.ndarray:
@@ -43,11 +46,27 @@ def _place_atom(
     cos_th = np.cos(np.pi - theta)   # sign tells us which side of C
 
     d_hat = (
-        cos_th    * bc_norm
+        cos_th * bc_norm
         + sin_th * np.cos(phi_iupac) * m
         - sin_th * np.sin(phi_iupac) * n
     )
     return C + r_new * d_hat
+
+
+_place_atom = place_atom
+
+
+def build_all_trans(cfg: dict) -> np.ndarray:
+    """Build the all-trans n-pentane reference geometry."""
+    r = cfg["bonds"]["r_CC_ang"]
+    th = np.radians(cfg["angles"]["theta0_deg"])
+
+    c1 = np.array([0.0, 0.0, 0.0])
+    c2 = np.array([r, 0.0, 0.0])
+    c3 = c2 + r * np.array([np.cos(np.pi - th), np.sin(np.pi - th), 0.0])
+    c4 = place_atom(c1, c2, c3, r, th, np.pi)
+    c5 = place_atom(c2, c3, c4, r, th, np.pi)
+    return np.array([c1, c2, c3, c4, c5])
 
 
 def build_pentane(phi1: float, phi2: float, cfg: dict) -> np.ndarray:
@@ -75,10 +94,41 @@ def build_pentane(phi1: float, phi2: float, cfg: dict) -> np.ndarray:
     C3 = C2 + r * np.array([np.cos(np.pi - th), np.sin(np.pi - th), 0.0])
 
     # C4 and C5: use z-matrix placement with IUPAC dihedral convention
-    C4 = _place_atom(C1, C2, C3, r, th, phi1)
-    C5 = _place_atom(C2, C3, C4, r, th, phi2)
+    C4 = place_atom(C1, C2, C3, r, th, phi1)
+    C5 = place_atom(C2, C3, C4, r, th, phi2)
 
     return np.array([C1, C2, C3, C4, C5])
+
+
+def rotate_fragment(
+    pos: np.ndarray,
+    axis_start: np.ndarray,
+    axis_end: np.ndarray,
+    atom_indices: list[int] | tuple[int, ...] | np.ndarray,
+    angle: float,
+) -> np.ndarray:
+    """Rigidly rotate a Cartesian fragment about an axis using Rodrigues' formula."""
+    axis = np.asarray(axis_end, dtype=float) - np.asarray(axis_start, dtype=float)
+    axis_norm = np.linalg.norm(axis)
+    if axis_norm < 1e-15:
+        raise ValueError("rotation axis has near-zero length")
+    axis = axis / axis_norm
+
+    new_pos = np.array(pos, dtype=float, copy=True)
+    axis_start = np.asarray(axis_start, dtype=float)
+    cos_a = np.cos(angle)
+    sin_a = np.sin(angle)
+
+    for idx in atom_indices:
+        rel = new_pos[idx] - axis_start
+        rotated = (
+            rel * cos_a
+            + np.cross(axis, rel) * sin_a
+            + axis * np.dot(axis, rel) * (1.0 - cos_a)
+        )
+        new_pos[idx] = axis_start + rotated
+
+    return new_pos
 
 
 def calc_dihedral(a: np.ndarray, b: np.ndarray,

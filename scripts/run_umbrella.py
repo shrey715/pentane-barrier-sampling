@@ -2,14 +2,15 @@
 run_umbrella.py — Task 3 + 4: Umbrella sampling + WHAM + plots.
 
 Steps:
-  1. Loop over 18 window centres from np.linspace(-π, π, 18, endpoint=False)
-  2. Run run_window(phi0, T=120 K, cfg, seed=i) for each window
-  3. Save per-window trajectories to results/trajectories/us_window_<i>.npy
-  4. Run WHAM to get the unbiased PMF
-  5. Generate: us_window_histograms.png, wham_pmf.png, pmf_comparison.png
+    1. Loop over 36 window centres at the 10° histogram midpoints
+    2. Run run_window(phi0, T=120 K, cfg, seed=i) for each window
+    3. Save per-window trajectories to results/trajectories/us_window_<i>.npy
+    4. Run WHAM to get the unbiased PMF and convergence history
+    5. Generate: us_window_histograms.png, wham_convergence.png, wham_pmf.png,
+         pmf_comparison.png
 
 Usage:
-  python scripts/run_umbrella.py
+    python scripts/run_umbrella.py
 """
 import sys
 import time
@@ -20,9 +21,10 @@ sys.path.insert(0, str(Path(__file__).parents[1] / "src"))
 
 from pentane.config_loader import CFG
 from pentane.umbrella import run_window
-from pentane.wham import run_wham
+from pentane.wham import wham
 from pentane.plotting import (
     plot_us_window_histograms,
+    plot_wham_convergence,
     plot_wham_pmf,
     plot_pmf_comparison,
 )
@@ -47,7 +49,8 @@ def _load_baseline_trajs() -> dict:
 
 
 def main():
-    phi0s = np.linspace(-np.pi, np.pi, N_W, endpoint=False)
+    step = 2.0 * np.pi / N_W
+    phi0s = -np.pi + 0.5 * step + step * np.arange(N_W)
 
     print("=" * 60)
     print(f"Umbrella Sampling — {N_W} windows at T = {T_US} K")
@@ -74,12 +77,13 @@ def main():
     # ── WHAM ─────────────────────────────────────────────────────────────
     print("\nRunning WHAM … ", end="", flush=True)
     t0 = time.perf_counter()
-    bin_centres, pmf_wham = run_wham(trajs_us, phi0s, CFG, T_US)
+    bin_centres, pmf_wham, f_history = wham(trajs_us, phi0s, CFG, T_US, return_history=True)
     print(f"done in {time.perf_counter() - t0:.2f}s")
 
     # Save WHAM output
     np.save(RESULTS / "wham_bin_centres.npy", bin_centres)
     np.save(RESULTS / "wham_pmf.npy", pmf_wham)
+    np.save(RESULTS / "wham_history.npy", f_history)
 
     # Print barrier heights from WHAM PMF
     finite_pmf = np.where(np.isfinite(pmf_wham), pmf_wham, np.nan)
@@ -107,6 +111,8 @@ def main():
     print("\nGenerating plots …")
     plot_us_window_histograms(trajs_us, phi0s, CFG,
         str(RESULTS / "us_window_histograms.png"))
+    plot_wham_convergence(f_history,
+        str(RESULTS / "wham_convergence.png"))
     plot_wham_pmf(bin_centres, pmf_wham, baseline_trajs, T_US, CFG,
         str(RESULTS / "wham_pmf.png"))
     plot_pmf_comparison(bin_centres, pmf_wham, baseline_trajs, T_US, CFG,
