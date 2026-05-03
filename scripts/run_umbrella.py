@@ -1,13 +1,10 @@
 """
-run_umbrella.py — Umbrella sampling + WHAM + plots.
+run_umbrella.py — Umbrella sampling + WHAM for both baseline temperatures.
 
-Steps:
-    1. Loop over 36 window centres at the 10° histogram midpoints
-    2. Run run_window(phi0, T, cfg, seed) for each window at both baseline
-       temperatures
-    3. Save per-window trajectories to results/trajectories/us_window_<T>K_<i>.npy
-    4. Run WHAM to get the unbiased PMF and convergence history
-    5. Generate temperature-specific histogram, convergence, and PMF plots
+For each temperature in config:
+  1. Run (or load from cache) one MC window per φ₀ centre.
+  2. Run WHAM to get the unbiased PMF.
+  3. Save results and generate plots.
 
 Usage:
     python scripts/run_umbrella.py
@@ -33,23 +30,19 @@ RESULTS  = Path(__file__).parents[1] / "results"
 TRAJ_DIR = RESULTS / "trajectories"
 TRAJ_DIR.mkdir(parents=True, exist_ok=True)
 
-_us  = CFG["umbrella"]
-N_W  = _us["n_windows"]              # 36
-T_LIST = [float(t) for t in CFG["simulation"]["temperatures_K"]]
+T_LIST  = [float(t) for t in CFG["simulation"]["temperatures_K"]]
+N_BINS  = CFG["simulation"]["n_bins"]
+N_WIN   = CFG["umbrella"]["n_windows"]
+K_BIAS  = CFG["umbrella"]["window_k_K_per_rad2"]
+N_STEPS = CFG["umbrella"]["n_steps_per_window"]
 
 
-def _temperature_tag(T: float) -> str:
-    return f"{T:.0f}K"
+def window_centres() -> np.ndarray:
+    step = 2.0 * np.pi / N_WIN
+    return -np.pi + 0.5 * step + step * np.arange(N_WIN)
 
 
-def _window_centres(cfg: dict) -> np.ndarray:
-    n_windows = int(cfg["umbrella"]["n_windows"])
-    step = 2.0 * np.pi / n_windows
-    return -np.pi + 0.5 * step + step * np.arange(n_windows)
-
-
-def _load_baseline_trajs() -> dict:
-    """Load baseline MC trajectories if available, else return empty dict."""
+def load_baseline_trajs() -> dict:
     trajs = {}
     for key in ("mc_120", "mc_250", "md_120", "md_250"):
         p = TRAJ_DIR / f"{key}.npy"
@@ -58,109 +51,95 @@ def _load_baseline_trajs() -> dict:
     return trajs
 
 
-def _save_outputs_for_temperature(T_us: float, stem: str, value, primary: bool = False):
-    tag = _temperature_tag(T_us)
-    np.save(RESULTS / f"{stem}_{tag}.npy", value)
-    if primary:
-        np.save(RESULTS / f"{stem}.npy", value)
+def run_temperature(T: float, baseline_trajs: dict, seed_base: int = 0) -> None:
+    tag   = f"{T:.0f}K"
+    phi0s = window_centres()
 
+    print(f"\n{'='*60}")
+    print(f"Umbrella Sampling — {N_WIN} windows at T = {T:.0f} K")
+    print(f"  n_steps = {N_STEPS}   k = {K_BIAS} K/rad²")
+    print(f"{'='*60}")
 
-def _run_temperature(T_us: float, baseline_trajs: dict, seed_base: int = 0) -> None:
-    tag = _temperature_tag(T_us)
-    phi0s = _window_centres(CFG)
-
-    print("\n" + "=" * 60)
-    print(f"Umbrella Sampling — {N_W} windows at T = {T_us:.0f} K")
-    print(f"  n_steps_per_window = {_us['n_steps_per_window']}")
-    print(f"  k = {_us['window_k_K_per_rad2']} K/rad²")
-    print("=" * 60)
-
+    # ── Run / load windows ────────────────────────────────────────────────────
     trajs_us = []
     for i, phi0 in enumerate(phi0s):
-        path = TRAJ_DIR / f"us_window_{tag}_{i:02d}.npy"
-        if path.exists():
-            print(f"  Window {i:02d} ({np.degrees(phi0):+.1f}°): loaded from cache")
-            trajs_us.append(np.load(path))
+        cache = TRAJ_DIR / f"us_window_{tag}_{i:02d}.npy"
+        if cache.exists():
+            print(f"  Window {i:02d} ({np.degrees(phi0):+.1f}°): from cache")
+            trajs_us.append(np.load(cache))
         else:
             print(f"  Window {i:02d} ({np.degrees(phi0):+.1f}°): running … ", end="", flush=True)
             t0 = time.perf_counter()
-            traj = run_window(phi0, T_us, CFG, seed=seed_base + i)
-            dt = time.perf_counter() - t0
-            np.save(path, traj)
+            traj = run_window(phi0, T, CFG, seed=seed_base + i)
+            np.save(cache, traj)
             trajs_us.append(traj)
-            print(f"done in {dt:.1f}s")
+            print(f"done in {time.perf_counter() - t0:.1f}s")
 
+    # ── WHAM ─────────────────────────────────────────────────────────────────
     print("\nRunning WHAM … ", end="", flush=True)
     t0 = time.perf_counter()
-    bin_centres, pmf_wham, f_history = wham(trajs_us, phi0s, CFG, T_us, return_history=True)
+    bin_centres, pmf_wham, f_history = wham(trajs_us, phi0s, CFG, T, return_history=True)
     print(f"done in {time.perf_counter() - t0:.2f}s")
 
-    primary = np.isclose(T_us, T_LIST[0])
-    _save_outputs_for_temperature(T_us, "wham_bin_centres", bin_centres, primary=primary)
-    _save_outputs_for_temperature(T_us, "wham_pmf", pmf_wham, primary=primary)
-    _save_outputs_for_temperature(T_us, "wham_history", f_history, primary=primary)
+    # Save arrays (tagged + primary for first temperature)
+    primary = np.isclose(T, T_LIST[0])
+    for stem, val in [("wham_bin_centres", bin_centres),
+                      ("wham_pmf", pmf_wham),
+                      ("wham_history", f_history)]:
+        np.save(RESULTS / f"{stem}_{tag}.npy", val)
+        if primary:
+            np.save(RESULTS / f"{stem}.npy", val)
 
-    finite_pmf = np.where(np.isfinite(pmf_wham), pmf_wham, np.nan)
-    _trans_region = np.abs(bin_centres) > np.radians(150)
-    _gauche_region = (np.abs(bin_centres) > np.radians(40)) & (np.abs(bin_centres) < np.radians(80))
-    trans_vals = finite_pmf[_trans_region]
-    trans_vals = trans_vals[np.isfinite(trans_vals)]
-    gauche_vals = finite_pmf[_gauche_region]
-    gauche_vals = gauche_vals[np.isfinite(gauche_vals)]
-
-    if trans_vals.size > 0 and gauche_vals.size > 0:
-        E_trans = np.nanmin(trans_vals)
-        E_gauche = np.nanmin(gauche_vals)
-        E_barrier = np.nanmax(finite_pmf)
+    # PMF summary
+    finite = np.where(np.isfinite(pmf_wham), pmf_wham, np.nan)
+    trans  = finite[np.abs(bin_centres) > np.radians(150)]
+    gauche = finite[(np.abs(bin_centres) > np.radians(40)) & (np.abs(bin_centres) < np.radians(80))]
+    if trans[np.isfinite(trans)].size and gauche[np.isfinite(gauche)].size:
         print(f"\n  PMF summary (WHAM):")
-        print(f"    Trans minimum  : {E_trans:.1f} K")
-        print(f"    Gauche minimum : {E_gauche:.1f} K")
-        print(f"    Barrier height : {E_barrier:.1f} K")
+        print(f"    Trans min   : {np.nanmin(trans):.1f} K")
+        print(f"    Gauche min  : {np.nanmin(gauche):.1f} K")
+        print(f"    Barrier     : {np.nanmax(finite):.1f} K")
 
-    baseline_key = f"mc_{int(round(T_us))}"
-    overlay_trajs = dict(baseline_trajs)
-    if baseline_key not in baseline_trajs:
-        fallback_key = f"mc_{int(round(T_LIST[0]))}"
-        print(f"\n  Warning: {baseline_key} not found, falling back to {fallback_key}.")
-        if fallback_key in baseline_trajs:
-            overlay_trajs[baseline_key] = baseline_trajs[fallback_key]
+    # ── Plots ─────────────────────────────────────────────────────────────────
+    # Make sure the baseline trajectory for this T is available for overlay
+    mc_key = f"mc_{int(round(T))}"
+    overlay = dict(baseline_trajs)
+    if mc_key not in overlay:
+        fallback = f"mc_{int(round(T_LIST[0]))}"
+        print(f"\n  Warning: {mc_key} not found, falling back to {fallback}.")
+        if fallback in baseline_trajs:
+            overlay[mc_key] = baseline_trajs[fallback]
 
     print("\nGenerating plots …")
-    plot_us_window_histograms(trajs_us, phi0s, CFG,
+    plot_us_window_histograms(trajs_us, phi0s,
         str(RESULTS / f"us_window_histograms_{tag}.png"))
     plot_wham_convergence(f_history,
-        str(RESULTS / f"wham_convergence_{tag}.png"))
-    plot_wham_pmf(bin_centres, pmf_wham, overlay_trajs, T_us, CFG,
-        str(RESULTS / f"wham_pmf_{tag}.png"))
-    plot_pmf_comparison(bin_centres, pmf_wham, overlay_trajs, T_us, CFG,
-        str(RESULTS / f"pmf_comparison_{tag}.png"))
+        str(RESULTS / f"wham_convergence_{tag}.png"), T=T)
+    plot_wham_pmf(bin_centres, pmf_wham, overlay, T,
+        str(RESULTS / f"wham_pmf_{tag}.png"), n_bins=N_BINS)
+    plot_pmf_comparison(bin_centres, pmf_wham, overlay, T,
+        str(RESULTS / f"pmf_comparison_{tag}.png"), n_bins=N_BINS)
 
     if primary:
-        np.save(RESULTS / "wham_bin_centres.npy", bin_centres)
-        np.save(RESULTS / "wham_pmf.npy", pmf_wham)
-        np.save(RESULTS / "wham_history.npy", f_history)
-        plot_us_window_histograms(trajs_us, phi0s, CFG,
+        plot_us_window_histograms(trajs_us, phi0s,
             str(RESULTS / "us_window_histograms.png"))
         plot_wham_convergence(f_history,
-            str(RESULTS / "wham_convergence.png"))
-        plot_wham_pmf(bin_centres, pmf_wham, overlay_trajs, T_us, CFG,
-            str(RESULTS / "wham_pmf.png"))
-        plot_pmf_comparison(bin_centres, pmf_wham, overlay_trajs, T_us, CFG,
-            str(RESULTS / "pmf_comparison.png"))
+            str(RESULTS / "wham_convergence.png"), T=T)
+        plot_wham_pmf(bin_centres, pmf_wham, overlay, T,
+            str(RESULTS / "wham_pmf.png"), n_bins=N_BINS)
+        plot_pmf_comparison(bin_centres, pmf_wham, overlay, T,
+            str(RESULTS / "pmf_comparison.png"), n_bins=N_BINS)
 
 
 def main():
-    baseline_trajs = _load_baseline_trajs()
-
     print("=" * 60)
     print("Umbrella Sampling + WHAM")
-    print(f"  temperatures = {T_LIST}")
-    print(f"  n_windows    = {N_W}")
-    print(f"  n_steps      = {_us['n_steps_per_window']}")
+    print(f"  temperatures = {T_LIST}  |  n_windows = {N_WIN}  |  n_steps = {N_STEPS}")
     print("=" * 60)
 
-    for idx, T_us in enumerate(T_LIST):
-        _run_temperature(T_us, baseline_trajs, seed_base=1000 * (idx + 1))
+    baseline_trajs = load_baseline_trajs()
+    for idx, T in enumerate(T_LIST):
+        run_temperature(T, baseline_trajs, seed_base=1000 * (idx + 1))
 
     print("\nAll umbrella sampling outputs written to results/")
 

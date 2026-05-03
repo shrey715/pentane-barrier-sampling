@@ -1,198 +1,153 @@
-"""
-plotting.py — All matplotlib figures for the pentane barrier sampling project.
-
-Public API
-----------
-plot_dihedral_timeseries(trajs_dict, out_path)
-plot_baseline_distributions(trajs_dict, cfg, out_path)
-plot_baseline_pmf(trajs_dict, T_list, cfg, out_path)
-plot_entropy_curves(trajs_dict, cfg, out_path)
-plot_us_window_histograms(trajs, phi0s, cfg, out_path)
-plot_wham_convergence(f_history, out_path)
-plot_wham_pmf(bin_centres, pmf_wham, trajs_dict, T_us, cfg, out_path)
-plot_pmf_comparison(bin_centres, pmf_wham, trajs_dict, T_us, cfg, out_path)
-
-trajs_dict keys: "mc_120", "mc_250", "md_120", "md_250"
-All temperatures in K.  All dihedrals in rad.  PMF in K.
-"""
+"""plotting.py — Matplotlib figures for the pentane barrier sampling project."""
 import numpy as np
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
+import seaborn as sns
 from pathlib import Path
-from pentane.analysis import boltzmann_pmf, exploration_entropy
+from pentane.analysis import boltzmann_pmf
 
-# ── Style ───────────────────────────────────────────────────────────────────
-plt.rcParams.update({
-    "figure.dpi": 150,
-    "figure.facecolor": "#0d1117",
-    "axes.facecolor": "#161b22",
-    "axes.edgecolor": "#30363d",
-    "axes.labelcolor": "#c9d1d9",
-    "axes.titlecolor": "#e6edf3",
-    "axes.grid": True,
-    "grid.color": "#21262d",
-    "grid.linewidth": 0.6,
-    "xtick.color": "#8b949e",
-    "ytick.color": "#8b949e",
-    "text.color": "#c9d1d9",
-    "legend.framealpha": 0.15,
-    "legend.edgecolor": "#30363d",
-    "legend.labelcolor": "#c9d1d9",
-    "lines.linewidth": 1.4,
-    "font.family": "sans-serif",
-})
+sns.set_theme(style="whitegrid", context="notebook", font_scale=1.1)
+plt.rcParams.update({"figure.dpi": 150, "lines.linewidth": 1.4, "font.family": "sans-serif"})
 
-_CMAP  = ["#58a6ff", "#f78166", "#56d364", "#d2a8ff"]   # blue, red, green, purple
-_LABEL = {"mc_120": "MC 120 K", "mc_250": "MC 250 K",
+# Colours matching seaborn's default blue/orange/green/purple
+COLORS = ["#4C72B0", "#DD8452", "#55A868", "#8172B2"]
+LABELS = {"mc_120": "MC 120 K", "mc_250": "MC 250 K",
           "md_120": "MD 120 K", "md_250": "MD 250 K"}
-_RAD2DEG = 180.0 / np.pi
+R2D = 180.0 / np.pi   # radians → degrees
 
 
-def _deg_formatter():
+def _deg_fmt():
     return ticker.FuncFormatter(lambda x, _: f"{x:.0f}°")
 
 
 def _save(fig, path):
     Path(path).parent.mkdir(parents=True, exist_ok=True)
-    fig.savefig(path, bbox_inches="tight", facecolor=fig.get_facecolor())
+    fig.savefig(path, bbox_inches="tight")
     plt.close(fig)
     print(f"  saved → {path}")
 
 
-# ── 1. Dihedral time series ─────────────────────────────────────────────────
+# ── 1. Dihedral time series ──────────────────────────────────────────────────
 
-def plot_dihedral_timeseries(trajs_dict: dict, out_path: str):
-    """4-panel dihedral φ₁(t) for MC/MD × 120K/250K."""
+def plot_dihedral_timeseries(trajs: dict, out_path: str):
+    """4-panel φ₁(t) for MC/MD × 120 K/250 K."""
     keys = ["mc_120", "mc_250", "md_120", "md_250"]
     fig, axes = plt.subplots(2, 2, figsize=(12, 7), sharey=True)
-    fig.suptitle("Dihedral φ₁ Time Series", fontsize=14, color="#e6edf3", y=1.01)
+    fig.suptitle("Dihedral φ₁ Time Series", fontsize=14, y=1.01)
 
-    for ax, key, colour in zip(axes.flat, keys, _CMAP):
-        traj = trajs_dict[key]
-        n    = len(traj)
-        ax.plot(np.arange(n), traj * _RAD2DEG, color=colour, lw=0.4, alpha=0.85)
-        ax.set_title(_LABEL[key], fontsize=11)
-        ax.set_xlabel("MC/MD step")
+    for ax, key, colour in zip(axes.flat, keys, COLORS):
+        traj = trajs[key]
+        ax.plot(np.arange(len(traj)), traj * R2D, color=colour, lw=0.4, alpha=0.85)
+        ax.set_title(LABELS[key], fontsize=11)
+        ax.set_xlabel("Step")
         ax.set_ylabel("φ₁ [°]")
         ax.set_ylim(-185, 185)
-        ax.yaxis.set_major_formatter(_deg_formatter())
+        ax.yaxis.set_major_formatter(_deg_fmt())
 
     fig.tight_layout()
     _save(fig, out_path)
 
 
-# ── 2. Baseline distributions ───────────────────────────────────────────────
+# ── 2. Baseline distributions ────────────────────────────────────────────────
 
-def plot_baseline_distributions(trajs_dict: dict, cfg: dict, out_path: str):
-    """4-panel dihedral histograms."""
-    keys  = ["mc_120", "mc_250", "md_120", "md_250"]
-    n_bins = cfg["simulation"]["n_bins"]
-    edges  = np.linspace(-np.pi, np.pi, n_bins + 1)
-    centres = 0.5 * (edges[:-1] + edges[1:]) * _RAD2DEG
+def plot_baseline_distributions(trajs: dict, n_bins: int, out_path: str):
+    """4-panel dihedral probability histograms."""
+    edges = np.linspace(-np.pi, np.pi, n_bins + 1)
+    centres = 0.5 * (edges[:-1] + edges[1:]) * R2D
+    bar_w = R2D * (edges[1] - edges[0]) * 0.9
 
     fig, axes = plt.subplots(2, 2, figsize=(12, 7), sharey=False)
-    fig.suptitle("φ₁ Dihedral Distributions", fontsize=14, color="#e6edf3", y=1.01)
+    fig.suptitle("φ₁ Dihedral Distributions", fontsize=14, y=1.01)
 
-    for ax, key, colour in zip(axes.flat, keys, _CMAP):
-        traj   = trajs_dict[key]
-        counts, _ = np.histogram(traj, bins=edges)
-        probs  = counts / counts.sum()
-        ax.bar(centres, probs, width=(_RAD2DEG * (edges[1] - edges[0])) * 0.9,
-               color=colour, alpha=0.75, edgecolor="none")
-        ax.set_title(_LABEL[key], fontsize=11)
+    for ax, key, colour in zip(axes.flat, ["mc_120", "mc_250", "md_120", "md_250"], COLORS):
+        counts, _ = np.histogram(trajs[key], bins=edges)
+        probs = counts / counts.sum()
+        ax.bar(centres, probs, width=bar_w, color=colour, alpha=0.75, edgecolor="none")
+        ax.set_title(LABELS[key], fontsize=11)
         ax.set_xlabel("φ₁ [°]")
         ax.set_ylabel("Probability")
-        ax.xaxis.set_major_formatter(_deg_formatter())
+        ax.xaxis.set_major_formatter(_deg_fmt())
 
     fig.tight_layout()
     _save(fig, out_path)
 
 
-# ── 3. Baseline PMF ─────────────────────────────────────────────────────────
+# ── 3. Baseline PMF ──────────────────────────────────────────────────────────
 
-def plot_baseline_pmf(trajs_dict: dict, T_list: list, cfg: dict, out_path: str):
+def plot_baseline_pmf(trajs: dict, T_list: list, n_bins: int, out_path: str):
     """Boltzmann-inversion PMF at both temperatures (MC only)."""
-    n_bins = cfg["simulation"]["n_bins"]
-    fig, axes = plt.subplots(1, 2, figsize=(12, 5), sharey=False)
-    fig.suptitle("Baseline PMF (Boltzmann Inversion)", fontsize=14, color="#e6edf3")
+    fig, axes = plt.subplots(1, 2, figsize=(12, 5))
+    fig.suptitle("Baseline PMF (Boltzmann Inversion)", fontsize=14)
 
-    pairs = [("mc_120", T_list[0], _CMAP[0], "MC 120 K"),
-             ("mc_250", T_list[1], _CMAP[1], "MC 250 K")]
-
-    for ax, (key, T, colour, label) in zip(axes, pairs):
-        traj = trajs_dict[key]
-        centres, pmf = boltzmann_pmf(traj, T, n_bins)
-        ax.plot(centres * _RAD2DEG, pmf, color=colour, lw=2.0)
-        ax.fill_between(centres * _RAD2DEG, pmf,
-                        alpha=0.15, color=colour)
+    for ax, (key, T, colour, label) in zip(axes, [
+        ("mc_120", T_list[0], COLORS[0], "MC 120 K"),
+        ("mc_250", T_list[1], COLORS[1], "MC 250 K"),
+    ]):
+        centres, pmf = boltzmann_pmf(trajs[key], T, n_bins)
+        ax.plot(centres * R2D, pmf, color=colour, lw=2.0)
+        ax.fill_between(centres * R2D, pmf, alpha=0.15, color=colour)
         ax.set_title(label, fontsize=11)
         ax.set_xlabel("φ₁ [°]")
         ax.set_ylabel("F(φ₁) [K]")
-        ax.xaxis.set_major_formatter(_deg_formatter())
+        ax.xaxis.set_major_formatter(_deg_fmt())
         ax.set_xlim(-180, 180)
 
     fig.tight_layout()
     _save(fig, out_path)
 
 
-# ── 4. Entropy curves ───────────────────────────────────────────────────────
+# ── 4. Entropy curves ────────────────────────────────────────────────────────
 
-def plot_entropy_curves(trajs_dict: dict, cfg: dict, out_path: str):
-    """S(t) vs step for all 4 baseline runs."""
-    keys   = ["mc_120", "mc_250", "md_120", "md_250"]
-    n_bins = cfg["simulation"]["n_bins"]
-    edges  = np.linspace(-np.pi, np.pi, n_bins + 1)
+def plot_entropy_curves(trajs: dict, n_bins: int, out_path: str):
+    """Cumulative Shannon entropy S(t) for all 4 baseline runs."""
+    edges = np.linspace(-np.pi, np.pi, n_bins + 1)
 
     fig, ax = plt.subplots(figsize=(11, 5))
-    ax.set_title("Exploration Entropy S(t) vs Step", fontsize=13, color="#e6edf3")
-    ax.set_xlabel("MC/MD step")
+    ax.set_title("Exploration Entropy S(t) vs Step", fontsize=13)
+    ax.set_xlabel("Step")
     ax.set_ylabel("Shannon entropy S [nats]")
 
-    for key, colour in zip(keys, _CMAP):
-        traj  = trajs_dict[key]
-        n     = len(traj)
-        # Compute cumulative entropy every 1000 steps for speed
+    for key, colour in zip(["mc_120", "mc_250", "md_120", "md_250"], COLORS):
+        traj = trajs[key]
+        n = len(traj)
         stride = max(1, n // 500)
         checkpoints = np.arange(stride, n + 1, stride)
         entropies = []
         for t in checkpoints:
             counts, _ = np.histogram(traj[:t], bins=edges)
-            probs = counts / counts.sum()
-            probs = probs[probs > 0]
-            entropies.append(-np.sum(probs * np.log(probs)))
-        ax.plot(checkpoints, entropies, color=colour, label=_LABEL[key], lw=1.8)
+            p = counts / counts.sum()
+            p = p[p > 0]
+            entropies.append(-np.sum(p * np.log(p)))
+        ax.plot(checkpoints, entropies, color=colour, label=LABELS[key], lw=1.8)
 
-    # Reference: maximum entropy = ln(n_bins)
-    ax.axhline(np.log(n_bins), ls="--", color="#8b949e", lw=1.0,
+    ax.axhline(np.log(n_bins), ls="--", color="grey", lw=1.0,
                label=f"S_max = ln({n_bins}) = {np.log(n_bins):.2f}")
     ax.legend(fontsize=9)
     fig.tight_layout()
     _save(fig, out_path)
 
 
-# ── 5. US window histograms ─────────────────────────────────────────────────
+# ── 5. US window histograms ──────────────────────────────────────────────────
 
-def plot_us_window_histograms(trajs: list, phi0s: np.ndarray,
-                               cfg: dict, out_path: str):
-    """Overlapping biased histograms, one colour per window."""
-    n_bins = cfg["simulation"]["n_bins"]
-    edges  = np.linspace(-np.pi, np.pi, n_bins + 1)
-    centres = 0.5 * (edges[:-1] + edges[1:]) * _RAD2DEG
-
+def plot_us_window_histograms(trajs: list, phi0s: np.ndarray, out_path: str):
+    """Overlapping biased-window histograms (5° bins for legibility)."""
+    edges = np.linspace(-np.pi, np.pi, 73)   # 72 bins = 5° each
+    centres = 0.5 * (edges[:-1] + edges[1:]) * R2D
     cmap = plt.cm.hsv(np.linspace(0, 0.9, len(trajs)))
+
     fig, ax = plt.subplots(figsize=(12, 5))
-    ax.set_title("Umbrella Sampling — Biased Window Histograms", fontsize=13, color="#e6edf3")
+    ax.set_title("Umbrella Sampling — Biased Window Histograms", fontsize=13)
     ax.set_xlabel("φ₁ [°]")
     ax.set_ylabel("Probability")
-    ax.xaxis.set_major_formatter(_deg_formatter())
+    ax.xaxis.set_major_formatter(_deg_fmt())
 
     for i, (traj, phi0, colour) in enumerate(zip(trajs, phi0s, cmap)):
         counts, _ = np.histogram(traj, bins=edges)
         probs = counts / counts.sum()
         ax.plot(centres, probs, color=colour, lw=1.2, alpha=0.8,
-                label=f"{phi0 * _RAD2DEG:.0f}°" if i % 3 == 0 else None)
+                label=f"{phi0 * R2D:.0f}°" if i % 3 == 0 else None)
 
     ax.legend(fontsize=7, ncol=3, title="φ₀", title_fontsize=8)
     ax.set_xlim(-180, 180)
@@ -200,79 +155,72 @@ def plot_us_window_histograms(trajs: list, phi0s: np.ndarray,
     _save(fig, out_path)
 
 
-# ── 6. WHAM convergence ───────────────────────────────────────────────────
+# ── 6. WHAM convergence ──────────────────────────────────────────────────────
 
-def plot_wham_convergence(f_history: np.ndarray, out_path: str):
-    """Plot the WHAM free-energy offsets versus iteration."""
+def plot_wham_convergence(f_history: np.ndarray, out_path: str, T: float = None):
+    """Free-energy offsets fᵢ vs WHAM iteration."""
     if f_history.ndim != 2 or f_history.size == 0:
-        raise ValueError("f_history must have shape (n_iter, n_windows)")
+        raise ValueError("f_history must be shape (n_iter, n_windows)")
 
-    fig, ax = plt.subplots(figsize=(11, 5))
-    ax.set_title("WHAM Convergence: Free-Energy Offsets", fontsize=13, color="#e6edf3")
-    ax.set_xlabel("Iteration")
-    ax.set_ylabel(r"$f_i$ [K]")
-
+    T_label = f" ({T:.0f} K)" if T is not None else ""
     n_iter, n_windows = f_history.shape
     cmap = plt.cm.viridis(np.linspace(0.1, 0.9, n_windows))
+
+    fig, ax = plt.subplots(figsize=(11, 5))
+    ax.set_title(f"WHAM Convergence: Free-Energy Offsets{T_label}", fontsize=13)
+    ax.set_xlabel("Iteration")
+    ax.set_ylabel(r"$f_i$ [K]")
     for i in range(n_windows):
         ax.plot(np.arange(1, n_iter + 1), f_history[:, i], color=cmap[i], lw=1.0, alpha=0.9)
-
     ax.set_xlim(1, n_iter)
     fig.tight_layout()
     _save(fig, out_path)
 
 
-# ── 7. WHAM PMF vs baseline PMF ────────────────────────────────────────────
+# ── 7. WHAM PMF vs baseline ──────────────────────────────────────────────────
 
 def plot_wham_pmf(bin_centres: np.ndarray, pmf_wham: np.ndarray,
-                   trajs_dict: dict, T_us: float, cfg: dict, out_path: str):
-    """Unbiased WHAM PMF overlaid on the matching MC baseline PMF."""
-    n_bins = cfg["simulation"]["n_bins"]
-    mc_key = f"mc_{int(round(T_us))}"
-    mc_traj = trajs_dict[mc_key]
-    centres_bl, pmf_bl = boltzmann_pmf(mc_traj, T_us, n_bins)
+                   trajs: dict, T: float, out_path: str, n_bins: int = 36):
+    """WHAM PMF overlaid on the matching MC baseline PMF."""
+    mc_key = f"mc_{int(round(T))}"
+    centres_bl, pmf_bl = boltzmann_pmf(trajs[mc_key], T, n_bins)
 
     fig, ax = plt.subplots(figsize=(10, 5))
-    ax.set_title(f"WHAM PMF vs Baseline PMF ({T_us:.0f} K)", fontsize=13, color="#e6edf3")
+    ax.set_title(f"WHAM PMF vs Baseline PMF ({T:.0f} K)", fontsize=13)
     ax.set_xlabel("φ₁ [°]")
     ax.set_ylabel("F(φ₁) [K]")
-    ax.xaxis.set_major_formatter(_deg_formatter())
-
-    ax.plot(bin_centres * _RAD2DEG, pmf_wham, color=_CMAP[3], lw=2.5,
+    ax.xaxis.set_major_formatter(_deg_fmt())
+    ax.plot(bin_centres * R2D, pmf_wham, color=COLORS[3], lw=2.5,
             label="WHAM (umbrella sampling)")
-    ax.plot(centres_bl * _RAD2DEG, pmf_bl, color=_CMAP[0], lw=2.0,
-            ls="--", label="Baseline MC 120 K")
-
+    ax.plot(centres_bl * R2D, pmf_bl, color=COLORS[0], lw=2.0,
+            ls="--", label=f"Baseline MC {int(round(T)):.0f} K")
     ax.set_xlim(-180, 180)
     ax.legend(fontsize=10)
     fig.tight_layout()
     _save(fig, out_path)
 
 
-# ── 8. PMF comparison side-by-side ─────────────────────────────────────────
+# ── 8. PMF side-by-side comparison ──────────────────────────────────────────
 
 def plot_pmf_comparison(bin_centres: np.ndarray, pmf_wham: np.ndarray,
-                         trajs_dict: dict, T_us: float, cfg: dict, out_path: str):
-    """WHAM PMF vs Boltzmann PMF side-by-side panel."""
-    n_bins = cfg["simulation"]["n_bins"]
-    mc_key = f"mc_{int(round(T_us))}"
-    mc_traj = trajs_dict[mc_key]
-    centres_bl, pmf_bl = boltzmann_pmf(mc_traj, T_us, n_bins)
+                         trajs: dict, T: float, out_path: str, n_bins: int = 36):
+    """WHAM PMF vs Boltzmann PMF side-by-side."""
+    mc_key = f"mc_{int(round(T))}"
+    centres_bl, pmf_bl = boltzmann_pmf(trajs[mc_key], T, n_bins)
 
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(13, 5), sharey=False)
-    fig.suptitle(f"PMF Comparison: WHAM vs Boltzmann Inversion ({T_us:.0f} K)",
-                 fontsize=13, color="#e6edf3")
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(13, 5))
+    fig.suptitle(f"PMF Comparison: WHAM vs Boltzmann Inversion ({T:.0f} K)", fontsize=13)
 
     for ax, pmf, centres, colour, title in [
-        (ax1, pmf_wham,  bin_centres, _CMAP[3], "WHAM PMF"),
-        (ax2, pmf_bl,    centres_bl,  _CMAP[0], "Boltzmann PMF (MC 120 K)"),
+        (ax1, pmf_wham, bin_centres, COLORS[3], "WHAM PMF"),
+        (ax2, pmf_bl,   centres_bl,  COLORS[0], f"Boltzmann PMF (MC {int(round(T)):.0f} K)"),
     ]:
-        ax.plot(centres * _RAD2DEG, pmf, color=colour, lw=2.2)
-        ax.fill_between(centres * _RAD2DEG, pmf, alpha=0.12, color=colour)
+        ax.plot(centres * R2D, pmf, color=colour, lw=2.2)
+        ax.fill_between(centres * R2D, pmf, alpha=0.12, color=colour)
         ax.set_title(title, fontsize=11)
         ax.set_xlabel("φ₁ [°]")
         ax.set_ylabel("F(φ₁) [K]")
-        ax.xaxis.set_major_formatter(_deg_formatter())
+        ax.xaxis.set_major_formatter(_deg_fmt())
         ax.set_xlim(-180, 180)
 
     fig.tight_layout()
