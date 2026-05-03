@@ -546,8 +546,8 @@ def make_plots(all_dihed, all_energ, temps, swap_rates, rth, out_dir: Path):
 # ─────────────────────────────────────────────────────────────────────────────
 
 def run_remd(
-    n_replicas   : int   = 8,
-    T_min        : float = 300.0,   # raised from 200K; pentane barely crosses barrier at 200K
+    n_replicas   : int   = 12,
+    T_min        : float = 120.0,
     T_max        : float = 600.0,
     total_steps  : int   = 100_000,
     swap_freq    : int   = 500,
@@ -686,9 +686,9 @@ def run_remd(
 
 def parse_args():
     p = argparse.ArgumentParser(description="REMD n-pentane (TraPPE-UA) - OpenMM")
-    p.add_argument("--replicas",      type=int,   default=8)
-    p.add_argument("--T-min",         type=float, default=300.0,
-                   help="Lowest replica T [K] (default 300)")
+    p.add_argument("--replicas",      type=int,   default=12)
+    p.add_argument("--T-min",         type=float, default=120.0,
+                   help="Lowest replica T [K] (default 120)")
     p.add_argument("--T-max",         type=float, default=600.0)
     p.add_argument("--steps",         type=int,   default=100_000)
     p.add_argument("--swap-freq",     type=int,   default=500)

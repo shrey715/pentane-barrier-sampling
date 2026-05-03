@@ -28,7 +28,7 @@ sys.path.insert(0, str(ROOT))
 
 from pentane.analysis import boltzmann_pmf
 from pentane.config_loader import CFG
-from pentane.units import K_to_kJmol, kB_kJ_per_mol, rad_to_degrees
+from pentane.units import K_to_kJmol, rad_to_degrees
 from pentane.wham import wham as umbrella_wham
 
 from remd.remd import block_pmf as remd_block_pmf
@@ -38,8 +38,8 @@ from remd.remd import wham_pmf as remd_wham_pmf
 PRIMARY_T = float(CFG["simulation"]["temperatures_K"][-1])
 N_BINS = int(CFG["simulation"]["n_bins"])
 PRIMARY_T_TAG = f"{PRIMARY_T:.0f}K"
-PRIMARY_BARRIER_TOL = 100.0 * kB_kJ_per_mol
-PRIMARY_DELTAF_TOL = 50.0 * kB_kJ_per_mol
+PRIMARY_BARRIER_TOL = 2.0
+PRIMARY_DELTAF_TOL = 1.0
 PRIMARY_RMSD_TOL = 0.5
 
 

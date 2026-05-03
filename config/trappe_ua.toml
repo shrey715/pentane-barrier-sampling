@@ -90,8 +90,6 @@ n_windows           = 36
 # This ensures >50% overlap between adjacent windows
 window_k_K_per_rad2 = 500.0
 n_steps_per_window  = 200000
-temperature_K       = 120.0         # US runs at the LOW temperature
-                                    # where trapping is worst
 
 # ── WHAM ─────────────────────────────────────────────────────────
 [wham]
