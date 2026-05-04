@@ -78,7 +78,11 @@ n_steps           = 200000
 n_bins            = 36               # bins over [-180°, 180°]
 dt_ps             = 0.002            # MD timestep [ps]
 tau_T_ps          = 0.5              # Nosé-Hoover coupling time [ps]
-mc_delta_phi_deg  = 15.0            # max MC dihedral trial move [°]
+mc_delta_phi_deg  = 30.0            # max MC dihedral trial move [°]
+                                    # 30° chosen so effective diffusion is large
+                                    # enough to explore the barrier region at 120K.
+                                    # Acceptance drops to ~20% but D_eff ∝ acc×δφ²
+                                    # is ~2× higher than with 15°.
 
 # ── Umbrella Sampling ────────────────────────────────────────────
 [umbrella]
