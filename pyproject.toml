@@ -10,6 +10,7 @@ dependencies = [
     "scipy>=1.10",
     "openmm>=8.5.1",
     "pytest>=9.0.3",
+    "seaborn>=0.13.2",
 ]
 
 [build-system]
