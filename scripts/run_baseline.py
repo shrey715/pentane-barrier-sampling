@@ -109,14 +109,16 @@ def main():
     for T, tag in zip(T_LIST, ["120K", "250K"]):
         us_files = sorted(TRAJ_DIR.glob(f"us_window_{tag}_*.npy"))
         if us_files:
-            pooled = np.concatenate([np.load(f) for f in us_files])
-            rng2 = np.random.default_rng(0)
-            idx2 = rng2.choice(len(pooled), size=N_STEPS, replace=False)
-            us_traj = pooled[idx2]
+            key = f"umbrella_{int(round(T))}"
+            n_win = len(us_files)
+            steps_per_win = N_STEPS // n_win
+            segments = [np.load(f)[:steps_per_win] for f in us_files]
+            us_traj = np.concatenate(segments)
+
             E_us = early_exploration_score(us_traj, N_BINS)
-            label = f"Umbrella {int(round(T))} K"
+            label = LABELS_SCORE.get(key, key)
             early_scores[label] = E_us
-            print(f"  umbrella_{int(round(T))}: early_score={E_us:.4f}")
+            print(f"  {key}: early_score={E_us:.4f}")
 
     plot_early_exploration_bar(
         early_scores,
