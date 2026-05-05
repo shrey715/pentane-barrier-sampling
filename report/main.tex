@@ -272,7 +272,7 @@ Dihedral bins & 36 & Over $[-180^\circ, 180^\circ]$ \\
 
 \begin{figure}[H]
   \centering
-  \includegraphics[width=\linewidth]{figs/dihedral_timeseries.jpg}
+  \includegraphics[width=\linewidth]{figs/dihedral_timeseries.png}
   \caption{Dihedral $\varphi_1$ time series for MC and NVT MD at 120\,K
     (left column) and 250\,K (right column).  The solid blocks at
     $\varphi_1 \approx +180^\circ$ in the 120\,K panels confirm complete
@@ -284,7 +284,7 @@ Dihedral bins & 36 & Over $[-180^\circ, 180^\circ]$ \\
 
 \begin{figure}[H]
   \centering
-  \includegraphics[width=0.85\linewidth]{figs/baseline_distributions.jpg}
+  \includegraphics[width=0.85\linewidth]{figs/baseline_distributions.png}
   \caption{Dihedral histograms from baseline MC and MD at both temperatures.
     At 120\,K both methods populate only the trans bin near
     $\pm 180^\circ$.  At 250\,K, MC begins to accumulate minor probability
@@ -313,7 +313,7 @@ method achieves ergodic sampling at either temperature within 200\,000 steps.
 
 \begin{figure}[H]
   \centering
-  \includegraphics[width=0.85\linewidth]{figs/baseline_pmf.jpg}
+  \includegraphics[width=0.85\linewidth]{figs/baseline_pmf.png}
   \caption{Baseline PMF computed by Boltzmann inversion of the MC and MD
     dihedral histograms at 120\,K and 250\,K.  The PMF is defined only
     over bins that were visited; unvisited bins appear as gaps.  At 120\,K
@@ -366,12 +366,12 @@ profile $F(\varphi_1) = -T\ln\rho(\varphi_1)$.
 \begin{figure}[H]
   \centering
   \begin{subfigure}[b]{0.49\linewidth}
-    \includegraphics[width=\linewidth]{figs/us_window_histograms_120K.jpg}
+    \includegraphics[width=\linewidth]{figs/us_window_histograms_120K.png}
     \caption{120\,K}
   \end{subfigure}
   \hfill
   \begin{subfigure}[b]{0.49\linewidth}
-    \includegraphics[width=\linewidth]{figs/us_window_histograms_250K.jpg}
+    \includegraphics[width=\linewidth]{figs/us_window_histograms_250K.png}
     \caption{250\,K}
   \end{subfigure}
   \caption{Biased dihedral histograms from the 36 umbrella windows.  Each
@@ -384,12 +384,12 @@ profile $F(\varphi_1) = -T\ln\rho(\varphi_1)$.
 \begin{figure}[H]
   \centering
   \begin{subfigure}[b]{0.49\linewidth}
-    \includegraphics[width=\linewidth]{figs/wham_pmf_120K.jpg}
+    \includegraphics[width=\linewidth]{figs/wham_pmf_120K.png}
     \caption{120\,K}
   \end{subfigure}
   \hfill
   \begin{subfigure}[b]{0.49\linewidth}
-    \includegraphics[width=\linewidth]{figs/wham_pmf_250K.jpg}
+    \includegraphics[width=\linewidth]{figs/wham_pmf_250K.png}
     \caption{250\,K}
   \end{subfigure}
   \caption{WHAM-reconstructed PMF at 120\,K and 250\,K.  The trans minimum
@@ -402,12 +402,12 @@ profile $F(\varphi_1) = -T\ln\rho(\varphi_1)$.
 \begin{figure}[H]
   \centering
   \begin{subfigure}[b]{0.49\linewidth}
-    \includegraphics[width=\linewidth]{figs/wham_convergence_120K.jpg}
+    \includegraphics[width=\linewidth]{figs/wham_convergence_120K.png}
     \caption{120\,K}
   \end{subfigure}
   \hfill
   \begin{subfigure}[b]{0.49\linewidth}
-    \includegraphics[width=\linewidth]{figs/wham_convergence_250K.jpg}
+    \includegraphics[width=\linewidth]{figs/wham_convergence_250K.png}
     \caption{250\,K}
   \end{subfigure}
   \caption{WHAM iterative convergence: maximum absolute change in free-energy
@@ -442,7 +442,7 @@ never reach by thermal activation alone.
 
 \begin{figure}[H]
   \centering
-  \includegraphics[width=\linewidth]{figs/remd_timeseries.jpg}
+  \includegraphics[width=\linewidth]{figs/remd_timeseries.png}
   \caption{REMD dihedral time series at 120\,K (top), 355\,K (middle),
     and 800\,K (bottom).  In contrast to the baseline plots (Figure~\ref{fig:timeseries}),
     the 120\,K replica now exhibits frequent excursions between trans
@@ -456,12 +456,12 @@ never reach by thermal activation alone.
 \begin{figure}[H]
   \centering
   \begin{subfigure}[b]{0.49\linewidth}
-    \includegraphics[width=\linewidth]{figs/pmf_comparison_120K.jpg}
+    \includegraphics[width=\linewidth]{figs/pmf_comparison_120K.png}
     \caption{120\,K}
   \end{subfigure}
   \hfill
   \begin{subfigure}[b]{0.49\linewidth}
-    \includegraphics[width=\linewidth]{figs/pmf_comparison_250K.jpg}
+    \includegraphics[width=\linewidth]{figs/pmf_comparison_250K.png}
     \caption{250\,K}
   \end{subfigure}
   \caption{PMF comparison between baseline MC/MD (Boltzmann inversion),
@@ -536,7 +536,7 @@ Umbrella   & 120 & 3.58 & 100 & 36 \\
 
 \begin{figure}[H]
   \centering
-  \includegraphics[width=0.85\linewidth]{figs/entropy_curves.jpg}
+  \includegraphics[width=0.85\linewidth]{figs/entropy_curves.png}
   \caption{Cumulative exploration entropy $S(t)$ vs.\ step for all
     methods at 120\,K.  Baseline MC and MD plateau immediately, confirming
     trapping.  REMD rises steeply and saturates near $S_{\max} = 3.58$\,nats
