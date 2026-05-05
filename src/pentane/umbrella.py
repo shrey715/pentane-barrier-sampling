@@ -56,7 +56,12 @@ def run_window(phi0: float, T: float, cfg: dict, seed: int = None) -> np.ndarray
     rng = np.random.default_rng(seed)
     k = float(cfg["umbrella"]["window_k_K_per_rad2"])
     n = int(cfg["umbrella"]["n_steps_per_window"])
-    delta = np.radians(cfg["simulation"]["mc_delta_phi_deg"])
+    # Use the umbrella-specific step size if present; fall back to simulation key.
+    # Umbrella windows benefit from larger moves (30°) since the bias confines
+    # exploration to each window — the baseline MC uses 5° for fair MD comparison.
+    _us_delta_deg = cfg["umbrella"].get("umbrella_mc_delta_phi_deg",
+                                        cfg["simulation"]["mc_delta_phi_deg"])
+    delta = np.radians(_us_delta_deg)
     beta = 1.0 / T
 
     pos = build_pentane(phi0, np.pi, cfg)

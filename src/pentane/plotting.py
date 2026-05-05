@@ -30,20 +30,31 @@ def _save(fig, path):
     print(f"  saved → {path}")
 
 
-def _count_crossings(traj: np.ndarray, threshold_deg: float = 90.0) -> int:
-    """Count transitions that cross ±threshold through the barrier region.
+def _count_crossings(traj: np.ndarray, threshold_deg: float = 90.0,
+                     min_dwell: int = 50) -> int:
+    """Count genuine trans↔gauche transitions with debouncing.
 
-    A crossing is defined as a step where φ passes through +threshold or
-    -threshold (i.e., a trans↔gauche transition).
+    A transition is only counted when the molecule has dwelt in a new state
+    for at least ``min_dwell`` consecutive steps, suppressing false positives
+    from rapid librations near the barrier.
+
+    Parameters
+    ----------
+    traj         : np.ndarray [rad]  raw dihedral trajectory
+    threshold_deg: float  ±90° separates trans (|φ|>90°) from gauche (|φ|<90°)
+    min_dwell    : int    minimum steps in new state before it counts as a crossing
     """
-    threshold = np.radians(threshold_deg)
+    traj_deg = traj * R2D
+    state = np.where(np.abs(traj_deg) > threshold_deg,
+                     1, -1)  # 1=trans, -1=gauche
     crossings = 0
-    for i in range(1, len(traj)):
-        a, b = traj[i - 1], traj[i]
-        if (a < threshold and b >= threshold) or (a >= threshold and b < threshold):
+    last_change = 0
+    current = state[0]
+    for i in range(1, len(state)):
+        if state[i] != current and (i - last_change) >= min_dwell:
             crossings += 1
-        if (a > -threshold and b <= -threshold) or (a <= -threshold and b > -threshold):
-            crossings += 1
+            current = state[i]
+            last_change = i
     return crossings
 
 
@@ -69,9 +80,10 @@ def plot_dihedral_timeseries(trajs: dict, out_path: str):
 
     for ax, key, colour in zip(axes, keys, COLORS):
         traj = trajs[key]
-        steps = np.arange(len(traj))
-        ax.plot(steps, traj * R2D, color=colour,
-                lw=0.3, alpha=0.75, rasterized=True)
+        plot_stride = max(1, len(traj) // 4000)
+        steps = np.arange(0, len(traj), plot_stride)
+        ax.plot(steps, traj[::plot_stride] * R2D, color=colour,
+                lw=0.6, alpha=0.85, rasterized=True)
         ax.set_ylim(-185, 185)
         ax.yaxis.set_major_formatter(_deg_fmt())
         ax.yaxis.set_major_locator(ticker.MultipleLocator(60))
