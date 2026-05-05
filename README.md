@@ -2,92 +2,62 @@
 
 ## Overview
 
-This project models **n-pentane** in the **United-Atom (UA)** representation using the **TraPPE-UA** force field in full Cartesian 3D space. It demonstrates the conformational sampling problem ("pentane barrier") and compares baseline Monte Carlo / molecular dynamics against **umbrella sampling + WHAM**.
+This project models **n-pentane** in the **United-Atom (UA)** representation using the **TraPPE-UA** force field. It implements full 3D Cartesian simulations (MC and MD) to demonstrate the conformational trapping problem at low temperatures and reconstructs the unbiased free-energy landscape (PMF) using **Umbrella Sampling + WHAM**.
 
 ## Project Structure
 
 ```txt
 project/
+├── main.py                 # Unified entry point for the simulation pipeline
 ├── pyproject.toml          # uv project configuration
-├── README.md               # This file
-├── project.pdf             # Original assignment
-├── src/pentane/            # Core simulation package
-│   ├── forcefield.py       # TraPPE-UA torsion potential & parameters
-│   ├── geometry.py         # Molecular geometry (NeRF algorithm)
-│   ├── mc.py               # Metropolis Monte Carlo
-│   ├── md.py               # NVT MD (Nosé-Hoover thermostat)
-│   ├── umbrella.py         # Umbrella sampling windows
-│   ├── wham.py             # WHAM post-processing
-│   ├── units.py            # K <-> kJ/mol and angle conversions
-│   ├── analysis.py         # Entropy, PMF, exploration metrics
-│   └── plotting.py         # Publication-quality figure generation
+├── config/
+│   └── trappe_ua.toml      # Force field and simulation parameters
+├── src/pentane/            # Core analytical package
+│   ├── analysis.py         # Entropy, early exploration scores, and PMF math
+│   ├── plotting.py         # Publication-quality visualization suite
+│   ├── forcefield.py       # TraPPE-UA potential implementation
+│   ├── mc.py               # Metropolis MC (Cartesian displacements)
+│   ├── md.py               # Velocity Verlet MD (Nosé-Hoover)
+│   └── wham.py             # WHAM implementation
 ├── scripts/
-│   ├── run_baseline.py     # Baseline MC/MD pipeline
-│   ├── run_umbrella.py     # Umbrella sampling + WHAM pipeline
-│   └── run_crossvalidation.py  # REMD vs umbrella vs baseline comparison
-├── tests/
-│   └── test_crossvalidation.py  # Dihedral and unit sanity checks
-└── results/                # Generated outputs
-    ├── plots/              # All figures (PNG)
-    └── report/             # Summary report (TXT)
+│   ├── run_baseline.py     # Stage 1: Trapping diagnostics (MC/MD)
+│   └── run_umbrella.py     # Stage 2: Enhanced sampling (Umbrella+WHAM)
+├── report/
+│   └── main.tex            # Final LaTeX research report
+└── results/                # Generated figures and trajectory cache
+    ├── trajectories/       # Cached .npy simulation data
+    └── *.png               # Analysis plots (entropy, timeseries, PMF)
 ```
 
-## Quick Start
+## Getting Started
+
+The project uses the `uv` package manager for fast, reproducible environment management.
 
 ```bash
-# Install dependencies with uv
+# Install dependencies
 uv sync
 
-# Run the baseline pipeline
-uv run python scripts/run_baseline.py
-
-# Run umbrella sampling + WHAM
-uv run python scripts/run_umbrella.py
-
-# Cross-validate against REMD (requires matching lowest replica temperature)
-uv run python scripts/run_crossvalidation.py --temperature 250
+# Run the complete research pipeline (Baseline + Umbrella)
+uv run python main.py --skip-remd
 ```
 
-## Methods Compared
+## Key Research Features
 
-| Method | Type | Description |
-|--------|------|-------------|
-| **Metropolis MC** | Baseline | Full Cartesian fragment rotations with Boltzmann acceptance |
-| **NVT MD** | Baseline | Full Cartesian velocity Verlet + Nosé-Hoover thermostat |
-| **Umbrella sampling + WHAM** | Enhanced | Biased window sampling with histogram reweighting |
+- **Diagnostic Visualizations**: Automatically generates dihedral time series, probability distributions, and PMF overlays comparing 120 K vs 250 K.
+- **Exploration Metrics**: Quantifies sampling efficiency using:
+  - **Shannon Entropy $S(t)$**: Tracking conformational discovery over time.
+  - **Early Exploration Score $E$**: Time-average of $S(t)$ to detect trapping.
+- **Enhanced Sampling**: Implementation of 36-window umbrella sampling to resolve barriers (~1500–2200 K) that are inaccessible to baseline MD/MC.
+- **Physical Rigor**: Models all internal degrees of freedom (bond stretch, angle bend, torsion) and long-range C1···C5 Lennard-Jones interactions.
 
-## Key Results
+## Core Results
 
-- At **120 K**, baseline methods remain trapped near the trans minimum.
-- Umbrella sampling with WHAM reconstructs the unbiased PMF across all 36 bins.
-- The full Cartesian model includes bond stretch, angle bend, torsion, and the allowed C1···C5 Lennard-Jones interaction.
-
-## Cross-Validation
-
-REMD is the independent OpenMM-backed reference. The cross-validation script compares the REMD PMF against the umbrella+WHAM PMF and the baseline MC/MD PMFs after converting everything to a common unit system.
-
-The REMD ladder must include the comparison temperature as its lowest replica. For example, to compare at 250 K run:
-
-```bash
-uv run python remd/remd.py --T-min 250 --T-max 600 --replicas 8
-uv run python scripts/run_baseline.py
-uv run python scripts/run_umbrella.py
-uv run python scripts/run_crossvalidation.py --temperature 250
-```
-
-For a 120 K comparison, rerun REMD with a ladder that starts at 120 K, for example `--T-min 120 --T-max 600 --replicas 12`.
-
-The cross-validation report and overlay figure are written to `results/report/crossvalidation_<T>K.txt` and `results/plots/crossvalidation_<T>K.png`.
-
-## Dependencies
-
-- Python ≥ 3.10
-- NumPy ≥ 1.24
-- Matplotlib ≥ 3.7
-- SciPy ≥ 1.10
+- At **120 K**, baseline simulations are trapped in the *trans* state (crossings $\approx 0$).
+- Umbrella Sampling recovers the full dihedral landscape, revealing the *gauche* minima and the rotation barriers.
+- The **Early Exploration Score** quantitatively distinguishes the "staircase" discovery of Umbrella Sampling from the immediate plateau of trapped baseline simulations.
 
 ## References
 
-- Martin & Siepmann, J. Phys. Chem. B, 102, 2569 (1998) — TraPPE-UA force field
-- Mundy et al., Faraday Discuss. 104, 123 (1996) — bond stretch and angle parameters
-- Kumar et al., J. Comput. Chem. 13, 1011 (1992) — WHAM
+- **Force Field**: Martin & Siepmann, *J. Phys. Chem. B* 102, 2569 (1998).
+- **WHAM**: Kumar et al., *J. Comput. Chem.* 13, 1011 (1992).
+- **Algorithm**: NeRF implementation for fast Cartesian mapping.
