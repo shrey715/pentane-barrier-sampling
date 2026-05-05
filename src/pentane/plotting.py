@@ -32,21 +32,44 @@ def _save(fig, path):
 # ── 1. Dihedral time series ──────────────────────────────────────────────────
 
 def plot_dihedral_timeseries(trajs: dict, out_path: str):
-    """4-panel φ₁(t) for MC/MD × 120 K/250 K."""
+    """4-panel φ₁(t) — vertically stacked, full width, shared x-axis."""
     keys = ["mc_120", "mc_250", "md_120", "md_250"]
-    fig, axes = plt.subplots(2, 2, figsize=(12, 7), sharey=True)
-    fig.suptitle("Dihedral φ₁ Time Series", fontsize=14, y=1.01)
 
-    for ax, key, colour in zip(axes.flat, keys, COLORS):
+    fig, axes = plt.subplots(
+        4, 1,
+        figsize=(16, 10),
+        sharex=True,
+        sharey=True,
+        constrained_layout=True,
+        gridspec_kw={"hspace": 0.08},
+    )
+    fig.suptitle("Dihedral φ₁ Time Series", fontsize=14)
+
+    for ax, key, colour in zip(axes, keys, COLORS):
         traj = trajs[key]
-        ax.plot(np.arange(len(traj)), traj * R2D, color=colour, lw=0.4, alpha=0.85)
-        ax.set_title(LABELS[key], fontsize=11)
-        ax.set_xlabel("Step")
-        ax.set_ylabel("φ₁ [°]")
+        steps = np.arange(len(traj))
+        ax.plot(steps, traj * R2D, color=colour, lw=0.3, alpha=0.75, rasterized=True)
         ax.set_ylim(-185, 185)
         ax.yaxis.set_major_formatter(_deg_fmt())
+        ax.yaxis.set_major_locator(ticker.MultipleLocator(60))
+        ax.set_ylabel("φ₁ [°]", fontsize=9)
+        # Label each panel on the right margin to avoid crowding the y-axis
+        ax.annotate(
+            LABELS[key],
+            xy=(1.0, 0.5), xycoords="axes fraction",
+            xytext=(6, 0), textcoords="offset points",
+            va="center", ha="left", fontsize=10, color=colour,
+            fontweight="bold",
+        )
+        ax.tick_params(axis="x", labelbottom=False)
+        # Subtle horizontal guide lines at ±120° (gauche) and 0° (cis)
+        for phi_ref in (-120, 0, 120):
+            ax.axhline(phi_ref, ls=":", lw=0.6, color="grey", alpha=0.5)
 
-    fig.tight_layout()
+    # Only bottom panel gets the x-axis label
+    axes[-1].tick_params(axis="x", labelbottom=True)
+    axes[-1].set_xlabel("Step", fontsize=11)
+
     _save(fig, out_path)
 
 
@@ -100,8 +123,19 @@ def plot_baseline_pmf(trajs: dict, T_list: list, n_bins: int, out_path: str):
 
 # ── 4. Entropy curves ────────────────────────────────────────────────────────
 
-def plot_entropy_curves(trajs: dict, n_bins: int, out_path: str):
-    """Cumulative Shannon entropy S(t) for all 4 baseline runs."""
+def plot_entropy_curves(trajs: dict, n_bins: int, out_path: str,
+                        enhanced_trajs: dict = None):
+    """Cumulative Shannon entropy S(t) for baseline and (optionally) enhanced runs.
+
+    Parameters
+    ----------
+    trajs          : dict  Baseline trajectories keyed by e.g. 'mc_120'.
+    n_bins         : int
+    out_path       : str
+    enhanced_trajs : dict, optional
+        Extra trajectories to overlay (e.g. ``{"remd_120": arr, "umbrella_120": arr}``).
+        Plotted as dashed lines with distinct colours.
+    """
     edges = np.linspace(-np.pi, np.pi, n_bins + 1)
 
     fig, ax = plt.subplots(figsize=(11, 5))
@@ -109,8 +143,7 @@ def plot_entropy_curves(trajs: dict, n_bins: int, out_path: str):
     ax.set_xlabel("Step")
     ax.set_ylabel("Shannon entropy S [nats]")
 
-    for key, colour in zip(["mc_120", "mc_250", "md_120", "md_250"], COLORS):
-        traj = trajs[key]
+    def _entropy_curve(traj):
         n = len(traj)
         stride = max(1, n // 500)
         checkpoints = np.arange(stride, n + 1, stride)
@@ -120,7 +153,23 @@ def plot_entropy_curves(trajs: dict, n_bins: int, out_path: str):
             p = counts / counts.sum()
             p = p[p > 0]
             entropies.append(-np.sum(p * np.log(p)))
-        ax.plot(checkpoints, entropies, color=colour, label=LABELS[key], lw=1.8)
+        return checkpoints, np.asarray(entropies)
+
+    for key, colour in zip(["mc_120", "mc_250", "md_120", "md_250"], COLORS):
+        chk, ent = _entropy_curve(trajs[key])
+        ax.plot(chk, ent, color=colour, label=LABELS[key], lw=1.8)
+
+    # Enhanced trajectories — dashed lines with distinct colours
+    if enhanced_trajs:
+        _ENH_COLORS  = {"remd_120": "#e377c2", "umbrella_120": "#17becf",
+                        "remd_250": "#bcbd22",  "umbrella_250": "#ff7f0e"}
+        _ENH_LABELS  = {"remd_120": "REMD 120 K",      "umbrella_120": "Umbrella 120 K",
+                        "remd_250": "REMD 250 K",      "umbrella_250": "Umbrella 250 K"}
+        for key, traj in enhanced_trajs.items():
+            colour = _ENH_COLORS.get(key, "black")
+            label  = _ENH_LABELS.get(key, key)
+            chk, ent = _entropy_curve(traj)
+            ax.plot(chk, ent, color=colour, label=label, lw=2.2, ls="--")
 
     ax.axhline(np.log(n_bins), ls="--", color="grey", lw=1.0,
                label=f"S_max = ln({n_bins}) = {np.log(n_bins):.2f}")

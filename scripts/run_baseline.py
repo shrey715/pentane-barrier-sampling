@@ -77,7 +77,19 @@ def main():
     plot_dihedral_timeseries(trajs, str(RESULTS / "dihedral_timeseries.png"))
     plot_baseline_distributions(trajs, N_BINS, str(RESULTS / "baseline_distributions.png"))
     plot_baseline_pmf(trajs, T_LIST, N_BINS, str(RESULTS / "baseline_pmf.png"))
-    plot_entropy_curves(trajs, N_BINS, str(RESULTS / "entropy_curves.png"))
+
+    # Opportunistically load cached umbrella trajectories to show enhanced
+    # sampling coverage in the entropy plot (no recomputation if missing).
+    enhanced = {}
+    for T, tag in zip(T_LIST, ["120K", "250K"]):
+        us_files = sorted(TRAJ_DIR.glob(f"us_window_{tag}_*.npy"))
+        if us_files:
+            key = f"umbrella_{int(round(T))}"
+            enhanced[key] = np.concatenate([np.load(f) for f in us_files])
+            print(f"  entropy plot: loaded {len(us_files)} umbrella windows for {key}")
+
+    plot_entropy_curves(trajs, N_BINS, str(RESULTS / "entropy_curves.png"),
+                        enhanced_trajs=enhanced if enhanced else None)
 
     print("\nAll baseline outputs written to results/")
 

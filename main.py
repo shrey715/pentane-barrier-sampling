@@ -17,8 +17,7 @@ Usage
   python main.py --skip-baseline --skip-umbrella   # REMD only
   python main.py --remd-steps 200000 --remd-replicas 8
 
-REMD defaults: 8 replicas over 120–800 K (geometric spacing factor ≈1.31,
-targeting 20–40% swap acceptance for n-pentane).
+REMD defaults: 8 replicas over 120–2000 K (targets 20–40% swap acceptance for n-pentane).
 """
 import argparse
 import sys
@@ -47,7 +46,7 @@ def run_umbrella():
     run_umbrella.main()
 
 
-def run_remd(n_replicas: int, total_steps: int):
+def run_remd(n_replicas: int, total_steps: int, T_max: float = 2000.0):
     print("\n" + "=" * 65)
     print("  STAGE 3 — REMD Validation (OpenMM)")
     print("=" * 65)
@@ -55,7 +54,7 @@ def run_remd(n_replicas: int, total_steps: int):
     _run_remd(
         n_replicas   = n_replicas,
         T_min        = 120.0,
-        T_max        = 800.0,   # wider range: (800/120)^(1/7)≈1.31 spacing
+        T_max        = T_max,
         total_steps  = total_steps,
         swap_freq    = 500,
         sample_every = 50,
@@ -76,9 +75,11 @@ def parse_args():
     p.add_argument("--skip-remd", action="store_true",
                    help="Skip Stage 3 (REMD) — useful if OpenMM is not installed")
     p.add_argument("--remd-replicas", type=int, default=8,
-                   help="Number of REMD replicas (default: 8; spacing (800/120)^(1/7)≈1.31 targets 20-40%% swap rate)")
+                   help="Number of REMD replicas (default: 8)")
     p.add_argument("--remd-steps", type=int, default=200_000,
                    help="Total MD steps per REMD run (default: 200 000)")
+    p.add_argument("--remd-tmax", type=float, default=2000.0,
+                   help="Max REMD temperature in K (default: 2000.0)")
     return p.parse_args()
 
 
@@ -100,7 +101,7 @@ def main():
         print("\nStage 2 skipped (--skip-umbrella)")
 
     if not args.skip_remd:
-        run_remd(args.remd_replicas, args.remd_steps)
+        run_remd(args.remd_replicas, args.remd_steps, args.remd_tmax)
     else:
         print("\nStage 3 skipped (--skip-remd)")
 

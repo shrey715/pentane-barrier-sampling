@@ -45,12 +45,11 @@ def early_exploration_score(
     """
     Early exploration score: time-average of cumulative entropy.
 
-    E ≈ (1/C) Σ_{c=1}^{C} S(t_c)
+    E = (1/T) Σ_{t=1}^{T} S(t)
 
-    where t_c are logarithmically spaced checkpoints and S(t) is the
-    exploration entropy of the first t steps.  Sampling at log-spaced
-    checkpoints rather than every step reduces iterations from O(N) to
-    O(C) (default C=500) with negligible loss of fidelity.
+    Approximated by evaluating S at ``n_checkpoints`` linearly spaced
+    strides so that each checkpoint represents the same number of steps
+    and the average faithfully approximates the spec definition.
 
     A higher score indicates faster discovery of phase space.
 
@@ -58,7 +57,7 @@ def early_exploration_score(
     ----------
     phi_traj     : np.ndarray, shape (n_steps,)   [rad]
     n_bins       : int   Histogram bins over [-π, π]
-    n_checkpoints: int   Number of log-spaced evaluation points
+    n_checkpoints: int   Number of linearly spaced evaluation points
 
     Returns
     -------
@@ -70,17 +69,16 @@ def early_exploration_score(
     # Bin entire trajectory in one vectorised call
     bins = np.clip(np.searchsorted(edges[1:], phi_traj), 0, n_bins - 1)
 
-    # Logarithmically spaced checkpoints (deduplicated, 1-indexed)
-    checkpoints = np.unique(
-        np.round(np.geomspace(1, n, min(n_checkpoints, n))).astype(int)
-    )
+    # Linear stride: each checkpoint spans the same number of steps,
+    # so averaging over them approximates (1/T)Σ_{t=1}^{T} S(t)
+    stride = max(1, n // n_checkpoints)
+    checkpoints = np.arange(stride, n + 1, stride)
 
     running = np.zeros(n_bins, dtype=np.int64)
     prev_t = 0
     total_entropy = 0.0
 
     for t in checkpoints:
-        # Batch-update counts for samples prev_t..t-1
         for b in bins[prev_t:t]:
             running[b] += 1
         prev_t = t

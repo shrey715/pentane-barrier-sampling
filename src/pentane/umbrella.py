@@ -6,6 +6,7 @@ difference is the additional harmonic bias on the phi1 dihedral. The raw phi1
 samples are returned for WHAM post-processing.
 """
 import numpy as np
+from concurrent.futures import ProcessPoolExecutor
 
 from pentane.forcefield import total_energy
 from pentane.geometry import build_pentane, calc_dihedral, rotate_fragment
@@ -81,9 +82,39 @@ def run_window(phi0: float, T: float, cfg: dict, seed: int = None) -> np.ndarray
     return traj
 
 
-def run_umbrella_sampling(T: float, cfg: dict, seed_base: int = 0):
-    """Run all umbrella windows and return the WHAM PMF."""
+def _run_window_worker(args: tuple) -> np.ndarray:
+    """Top-level worker required so multiprocessing can pickle the task."""
+    phi0, T, cfg, seed = args
+    return run_window(phi0, T, cfg, seed)
+
+
+def run_umbrella_sampling(T: float, cfg: dict, seed_base: int = 0,
+                          n_workers: int | None = None) -> tuple:
+    """Run all umbrella windows in parallel, then combine with WHAM.
+
+    Parameters
+    ----------
+    T         : float   Temperature [K]
+    cfg       : dict    Configuration dict (from config_loader)
+    seed_base : int     Windows receive seeds seed_base+0, seed_base+1, …
+    n_workers : int | None
+        Number of worker processes.  ``None`` (default) uses all logical
+        CPU cores.  Falls back to the ``umbrella.n_workers`` config key
+        when the argument is not supplied explicitly.
+    """
     phi0s = _window_centres(cfg)
-    phi_samples_per_window = [run_window(phi0, T, cfg, seed=seed_base + i) for i, phi0 in enumerate(phi0s)]
+
+    # Resolve worker count: explicit arg > config key > None (all cores)
+    if n_workers is None:
+        n_workers = cfg.get("umbrella", {}).get("n_workers") or None
+
+    task_args = [
+        (phi0, T, cfg, seed_base + i)
+        for i, phi0 in enumerate(phi0s)
+    ]
+
+    with ProcessPoolExecutor(max_workers=n_workers) as pool:
+        phi_samples_per_window = list(pool.map(_run_window_worker, task_args))
+
     bin_centres, pmf = run_wham(phi_samples_per_window, phi0s, cfg, T)
     return bin_centres, pmf

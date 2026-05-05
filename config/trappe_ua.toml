@@ -94,6 +94,7 @@ n_windows           = 36
 # This ensures >50% overlap between adjacent windows
 window_k_K_per_rad2 = 500.0
 n_steps_per_window  = 200000
+# n_workers = 8
 
 # ── WHAM ─────────────────────────────────────────────────────────
 [wham]

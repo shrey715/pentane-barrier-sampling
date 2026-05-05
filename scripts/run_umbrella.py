@@ -61,19 +61,48 @@ def run_temperature(T: float, baseline_trajs: dict, seed_base: int = 0) -> None:
     print(f"{'='*60}")
 
     # ── Run / load windows ────────────────────────────────────────────────────
-    trajs_us = []
+    # Two-phase: load cached windows immediately; dispatch the rest in parallel.
+    from concurrent.futures import ProcessPoolExecutor
+    from pentane.umbrella import _run_window_worker
+
+    n_workers = CFG.get("umbrella", {}).get("n_workers") or None
+
+    # Phase 1 — sort windows into cached vs. pending
+    trajs_us: list = [None] * len(phi0s)
+    pending: list  = []   # list of (list-index, task_args_tuple)
+
     for i, phi0 in enumerate(phi0s):
         cache = TRAJ_DIR / f"us_window_{tag}_{i:02d}.npy"
         if cache.exists():
             print(f"  Window {i:02d} ({np.degrees(phi0):+.1f}°): from cache")
-            trajs_us.append(np.load(cache))
+            trajs_us[i] = np.load(cache)
         else:
-            print(f"  Window {i:02d} ({np.degrees(phi0):+.1f}°): running … ", end="", flush=True)
-            t0 = time.perf_counter()
-            traj = run_window(phi0, T, CFG, seed=seed_base + i)
-            np.save(cache, traj)
-            trajs_us.append(traj)
-            print(f"done in {time.perf_counter() - t0:.1f}s")
+            pending.append((i, phi0, cache))
+
+    # Phase 2 — run uncached windows in parallel
+    if pending:
+        print(f"\n  Running {len(pending)} uncached window(s) "
+              f"with {n_workers or 'all'} worker(s) …")
+        import concurrent.futures
+        
+        t0 = time.perf_counter()
+        with ProcessPoolExecutor(max_workers=n_workers) as pool:
+            # Submit all tasks and map futures back to their (i, phi0, cache) metadata
+            future_to_info = {
+                pool.submit(_run_window_worker, (phi0, T, CFG, seed_base + i)): (i, phi0, cache)
+                for i, phi0, cache in pending
+            }
+            
+            # As each worker finishes its window, grab the result and print
+            for future in concurrent.futures.as_completed(future_to_info):
+                i, phi0, cache = future_to_info[future]
+                traj = future.result()
+                np.save(cache, traj)
+                trajs_us[i] = traj
+                print(f"  Window {i:02d} ({np.degrees(phi0):+.1f}°): finished and saved")
+                
+        elapsed = time.perf_counter() - t0
+        print(f"  … all done in {elapsed:.1f}s  ({len(pending)} windows × {N_STEPS} steps)")
 
     # ── WHAM ─────────────────────────────────────────────────────────────────
     print("\nRunning WHAM … ", end="", flush=True)
