@@ -84,25 +84,23 @@ def main():
         early_scores[LABELS_SCORE.get(key, key)] = E
         print(f"  {key:<8}  S(final)={S:.4f} nats   early_score={E:.4f}")
 
-    print("\nGenerating plots …")
-    plot_dihedral_timeseries(trajs, str(RESULTS / "dihedral_timeseries.png"))
-    plot_baseline_distributions(trajs, N_BINS, str(
-        RESULTS / "baseline_distributions.png"))
-    plot_baseline_pmf(trajs, T_LIST, N_BINS, str(RESULTS / "baseline_pmf.png"))
-
-    # Opportunistically load cached umbrella trajectories to show enhanced
-    # sampling coverage in the entropy plot (no recomputation if missing).
     enhanced = {}
     for T, tag in zip(T_LIST, ["120K", "250K"]):
         us_files = sorted(TRAJ_DIR.glob(f"us_window_{tag}_*.npy"))
         if us_files:
             key = f"umbrella_{int(round(T))}"
-            pooled = np.concatenate([np.load(f) for f in us_files])
-            rng = np.random.default_rng(42)
-            idx = rng.choice(len(pooled), size=N_STEPS, replace=False)
-            enhanced[key] = pooled[idx]
+            n_win = len(us_files)
+            steps_per_win = N_STEPS // n_win
+            segments = [np.load(f)[:steps_per_win] for f in us_files]
+            enhanced[key] = np.concatenate(segments)
             print(
-                f"  entropy plot: loaded {len(us_files)} umbrella windows for {key} (sub-sampled to {N_STEPS})")
+                f"  entropy plot: loaded {n_win} umbrella windows for {key} (pooled sequentially to {N_STEPS} steps)")
+
+    plot_dihedral_timeseries(trajs, str(RESULTS / "dihedral_timeseries.png"),
+                             enhanced_trajs=enhanced if enhanced else None)
+    plot_baseline_distributions(trajs, N_BINS, str(
+        RESULTS / "baseline_distributions.png"))
+    plot_baseline_pmf(trajs, T_LIST, N_BINS, str(RESULTS / "baseline_pmf.png"))
 
     plot_entropy_curves(trajs, N_BINS, str(RESULTS / "entropy_curves.png"),
                         enhanced_trajs=enhanced if enhanced else None)

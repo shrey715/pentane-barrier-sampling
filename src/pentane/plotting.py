@@ -15,7 +15,9 @@ plt.rcParams.update(
 # Colours matching seaborn's default blue/orange/green/purple
 COLORS = ["#4C72B0", "#DD8452", "#55A868", "#8172B2"]
 LABELS = {"mc_120": "MC 120 K", "mc_250": "MC 250 K",
-          "md_120": "MD 120 K", "md_250": "MD 250 K"}
+          "md_120": "MD 120 K", "md_250": "MD 250 K",
+          "umbrella_120": "Umbrella 120 K",
+          "umbrella_250": "Umbrella 250 K"}
 R2D = 180.0 / np.pi   # radians → degrees
 
 
@@ -60,26 +62,36 @@ def _count_crossings(traj: np.ndarray, threshold_deg: float = 90.0,
 
 # ── 1. Dihedral time series ──────────────────────────────────────────────────
 
-def plot_dihedral_timeseries(trajs: dict, out_path: str):
-    """4-panel φ₁(t) — vertically stacked, full width, shared x-axis.
+def plot_dihedral_timeseries(trajs: dict, out_path: str, enhanced_trajs: dict = None):
+    """Multiple-panel φ₁(t) — vertically stacked, full width, shared x-axis.
 
-    Each panel is annotated with the total number of barrier crossings
-    (transitions through ±90°) observed in the trajectory.
+    Includes baseline and optionally enhanced trajectories.
     """
     keys = ["mc_120", "mc_250", "md_120", "md_250"]
+    all_trajs = [(k, trajs[k], COLORS[i % len(COLORS)])
+                 for i, k in enumerate(keys) if k in trajs]
 
+    if enhanced_trajs:
+        # Use distinct colours for enhanced methods
+        ENH_COLORS = {"umbrella_120": "#17becf", "umbrella_250": "#ff7f0e"}
+        for k, t in enhanced_trajs.items():
+            all_trajs.append((k, t, ENH_COLORS.get(k, "black")))
+
+    n_panels = len(all_trajs)
     fig, axes = plt.subplots(
-        4, 1,
-        figsize=(16, 10),
+        n_panels, 1,
+        figsize=(16, 2.5 * n_panels),
         sharex=True,
         sharey=True,
         constrained_layout=True,
         gridspec_kw={"hspace": 0.08},
     )
+    if n_panels == 1:
+        axes = [axes]
+
     fig.suptitle("Dihedral φ₁ Time Series", fontsize=14)
 
-    for ax, key, colour in zip(axes, keys, COLORS):
-        traj = trajs[key]
+    for ax, (key, traj, colour) in zip(axes, all_trajs):
         plot_stride = max(1, len(traj) // 4000)
         steps = np.arange(0, len(traj), plot_stride)
         ax.plot(steps, traj[::plot_stride] * R2D, color=colour,
@@ -90,21 +102,32 @@ def plot_dihedral_timeseries(trajs: dict, out_path: str):
         ax.set_ylabel("φ₁ [°]", fontsize=9)
         # Label on right margin
         ax.annotate(
-            LABELS[key],
+            LABELS.get(key, key),
             xy=(1.0, 0.5), xycoords="axes fraction",
             xytext=(6, 0), textcoords="offset points",
             va="center", ha="left", fontsize=10, color=colour,
             fontweight="bold",
         )
-        # Barrier-crossing count annotation
-        n_cross = _count_crossings(traj)
-        ax.annotate(
-            f"{n_cross} crossings",
-            xy=(0.01, 0.88), xycoords="axes fraction",
-            fontsize=8.5, color=colour, fontstyle="italic",
-            bbox=dict(boxstyle="round,pad=0.2",
-                      fc="white", alpha=0.7, ec="none"),
-        )
+
+        # Barrier-crossing count annotation (skip for biased Umbrella)
+        if "umbrella" not in key:
+            n_cross = _count_crossings(traj)
+            ax.annotate(
+                f"{n_cross} crossings",
+                xy=(0.01, 0.88), xycoords="axes fraction",
+                fontsize=8.5, color=colour, fontstyle="italic",
+                bbox=dict(boxstyle="round,pad=0.2",
+                          fc="white", alpha=0.7, ec="none"),
+            )
+        else:
+            ax.annotate(
+                "Biased (Full Coverage)",
+                xy=(0.01, 0.88), xycoords="axes fraction",
+                fontsize=8.5, color=colour, fontstyle="italic",
+                bbox=dict(boxstyle="round,pad=0.2",
+                          fc="white", alpha=0.7, ec="none"),
+            )
+
         ax.tick_params(axis="x", labelbottom=False)
         # Subtle horizontal guide lines
         for phi_ref in (-120, 0, 120):
@@ -249,10 +272,8 @@ def plot_entropy_curves(trajs: dict, n_bins: int, out_path: str,
 
     # Enhanced trajectories — dashed lines with distinct colours
     if enhanced_trajs:
-        _ENH_COLORS = {"remd_120": "#e377c2", "umbrella_120": "#17becf",
-                       "remd_250": "#bcbd22",  "umbrella_250": "#ff7f0e"}
-        _ENH_LABELS = {"remd_120": "REMD 120 K",      "umbrella_120": "Umbrella 120 K",
-                       "remd_250": "REMD 250 K",       "umbrella_250": "Umbrella 250 K"}
+        _ENH_COLORS = {"umbrella_120": "#17becf", "umbrella_250": "#ff7f0e"}
+        _ENH_LABELS = {"umbrella_120": "Umbrella 120 K", "umbrella_250": "Umbrella 250 K"}
         for key, traj in enhanced_trajs.items():
             colour = _ENH_COLORS.get(key, "black")
             label = _ENH_LABELS.get(key, key)
