@@ -68,10 +68,14 @@ def run_md(T: float, cfg: dict, seed: int = None) -> np.ndarray:
         forces = forces_numerical(pos)
         acc = forces / masses_3d
         vel += 0.5 * dt * (acc - xi * vel)
-        vel = vel - _center_of_mass_velocity(vel, masses)
 
+        # Second ξ half-kick: must use kinetic energy *before* COM removal so
+        # that the thermostat sees the full kinetic energy consistent with
+        # dof = 3N - 3.  (Itoh, Morishita & Okumura, J. Chem. Phys. 139,
+        # 064103, 2013 — correct MTK operator-splitting order.)
         kinetic = 0.5 * np.sum(masses_3d * vel * vel)
         xi += 0.5 * dt * ((2.0 * kinetic - dof * T) / Q)
+        vel = vel - _center_of_mass_velocity(vel, masses)
 
         traj[i] = calc_dihedral(pos[0], pos[1], pos[2], pos[3])
 

@@ -11,6 +11,13 @@ from pentane.forcefield import total_energy
 from pentane.geometry import build_pentane, calc_dihedral, rotate_fragment
 from pentane.wham import run_wham
 
+# Probability of proposing a φ1 move (C2–C3 rotation) vs. a φ2 move
+# (C3–C4 rotation).  Biasing toward φ1 reduces the φ1 autocorrelation
+# time while retaining φ2 moves so the orthogonal DOF can relax.
+# Detailed balance is preserved: both branches use symmetric ±δ proposals.
+# (cf. Siepmann & Frenkel CBMC practice for n-alkane umbrella sampling.)
+PHI1_PROB: float = 0.80
+
 
 def _wrap(phi: float) -> float:
     """Wrap a dihedral to (-π, π]."""
@@ -24,11 +31,17 @@ def _bias(phi: float, phi0: float, k: float) -> float:
 
 
 def _propose_rotation(pos: np.ndarray, rng: np.random.Generator, delta: float) -> np.ndarray:
-    """Propose the same rigid Cartesian move used in baseline MC."""
+    """Propose a rigid Cartesian rotation.
+
+    With probability PHI1_PROB the C2–C3 bond is rotated (directly perturbing
+    φ1, the biased coordinate).  With probability 1–PHI1_PROB the C3–C4 bond
+    is rotated (perturbing φ2 while leaving φ1 largely unchanged).  Keeping
+    both move types allows the orthogonal degree of freedom to relax.
+    """
     angle = rng.uniform(-delta, delta)
-    if rng.random() < 0.5:
-        return rotate_fragment(pos, pos[1], pos[2], [3, 4], angle)
-    return rotate_fragment(pos, pos[2], pos[3], [4], angle)
+    if rng.random() < PHI1_PROB:
+        return rotate_fragment(pos, pos[1], pos[2], [3, 4], angle)  # φ1 move
+    return rotate_fragment(pos, pos[2], pos[3], [4], angle)          # φ2 move
 
 
 def _window_centres(cfg: dict) -> np.ndarray:
