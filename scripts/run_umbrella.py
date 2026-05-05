@@ -19,6 +19,7 @@ sys.path.insert(0, str(Path(__file__).parents[1] / "src"))
 from pentane.config_loader import CFG
 from pentane.umbrella import run_window
 from pentane.wham import wham
+from pentane.analysis import exploration_entropy, early_exploration_score
 from pentane.plotting import (
     plot_us_window_histograms,
     plot_wham_convergence,
@@ -128,6 +129,25 @@ def run_temperature(T: float, baseline_trajs: dict, seed_base: int = 0) -> None:
         print(f"    Trans min   : {np.nanmin(trans):.1f} K")
         print(f"    Gauche min  : {np.nanmin(gauche):.1f} K")
         print(f"    Barrier     : {np.nanmax(finite):.1f} K")
+
+    # ── Exploration entropy / early-exploration score ─────────────────────────
+    # S_final and bins_visited come from the WHAM-reconstructed unbiased
+    # probabilities — exact, no sub-sampling noise.
+    # early_score is computed on the full pooled trajectory with a stride
+    # (avoids the 7.2M-point Python loop while remaining unbiased).
+    wham_p = np.exp(-pmf_wham / T)
+    wham_p = wham_p / wham_p.sum()
+    S_final = float(-np.sum(wham_p[wham_p > 0] * np.log(wham_p[wham_p > 0])))
+    bins_visited = int(np.sum(wham_p > 0))
+
+    pooled = np.concatenate(trajs_us)
+    stride = max(1, len(pooled) // (N_STEPS * 5))   # keep ~1M pts max
+    E_score = early_exploration_score(pooled[::stride], N_BINS)
+
+    print(f"\n  Umbrella statistics ({T:.0f} K):")
+    print(f"    S(final)     : {S_final:.4f} nats")
+    print(f"    early_score  : {E_score:.4f} nats")
+    print(f"    bins visited : {bins_visited} / {N_BINS}")
 
     # ── Plots ─────────────────────────────────────────────────────────────────
     # Make sure the baseline trajectory for this T is available for overlay

@@ -259,8 +259,6 @@ def plot_entropy_curves(trajs: dict, n_bins: int, out_path: str,
             chk, ent = _entropy_curve(traj)
             ax.plot(chk, ent, color=colour, label=label, lw=2.2, ls="--")
 
-    ax.axhline(np.log(n_bins), ls="--", color="grey", lw=1.0,
-               label=f"S_max = ln({n_bins}) = {np.log(n_bins):.2f}")
     ax.legend(fontsize=9)
     fig.tight_layout()
     _save(fig, out_path)
@@ -426,9 +424,6 @@ def plot_early_exploration_bar(scores: dict, out_path: str):
         )
 
     ax.set_ylim(0, max(values) * 1.18)
-    ax.axhline(np.log(36), ls="--", color="grey", lw=1.0, alpha=0.7,
-               label=f"S_max = {np.log(36):.2f} nats")
-    ax.legend(fontsize=9)
     ax.tick_params(axis="x", rotation=20)
     fig.tight_layout()
     _save(fig, out_path)
