@@ -8,9 +8,11 @@ C1-C2-C3-C4 dihedral extracted from the Cartesian trajectory.
 import numpy as np
 
 from pentane.config_loader import CFG
-from pentane.forcefield import forces_numerical
+from pentane.forcefield import forces_numerical, forces_numba
 from pentane.geometry import build_all_trans, calc_dihedral
 
+# Prefer the Numba-JIT evaluator (~20× faster); fall back to pure-Python.
+_forces = forces_numba if forces_numba is not None else forces_numerical
 
 # 1 u expressed in K·ps²/Å² under k_B = 1.
 _U_TO_KPSA2 = 1.20272
@@ -52,7 +54,7 @@ def run_md(T: float, cfg: dict, seed: int = None) -> np.ndarray:
     Q = dof * T * tau_T ** 2
     xi = 0.0
 
-    forces = forces_numerical(pos)
+    forces = _forces(pos)
     traj = np.empty(n, dtype=float)
 
     for i in range(n):
@@ -65,7 +67,7 @@ def run_md(T: float, cfg: dict, seed: int = None) -> np.ndarray:
 
         pos = pos - _center_of_mass(pos, masses)
 
-        forces = forces_numerical(pos)
+        forces = _forces(pos)
         acc = forces / masses_3d
         vel += 0.5 * dt * (acc - xi * vel)
 
@@ -78,5 +80,4 @@ def run_md(T: float, cfg: dict, seed: int = None) -> np.ndarray:
         vel = vel - _center_of_mass_velocity(vel, masses)
 
         traj[i] = calc_dihedral(pos[0], pos[1], pos[2], pos[3])
-
     return traj

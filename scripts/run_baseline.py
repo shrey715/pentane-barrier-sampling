@@ -9,6 +9,17 @@ Outputs (all in results/):
 Usage:
   python scripts/run_baseline.py
 """
+from pentane.plotting import (
+    plot_dihedral_timeseries,
+    plot_baseline_distributions,
+    plot_baseline_pmf,
+    plot_entropy_curves,
+    plot_early_exploration_bar,
+)
+from pentane.analysis import exploration_entropy, early_exploration_score
+from pentane.md import run_md
+from pentane.mc import run_mc
+from pentane.config_loader import CFG
 import sys
 import time
 import numpy as np
@@ -16,24 +27,21 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parents[1] / "src"))
 
-from pentane.config_loader import CFG
-from pentane.mc import run_mc
-from pentane.md import run_md
-from pentane.analysis import exploration_entropy, early_exploration_score
-from pentane.plotting import (
-    plot_dihedral_timeseries,
-    plot_baseline_distributions,
-    plot_baseline_pmf,
-    plot_entropy_curves,
-)
 
-RESULTS  = Path(__file__).parents[1] / "results"
+RESULTS = Path(__file__).parents[1] / "results"
 TRAJ_DIR = RESULTS / "trajectories"
 TRAJ_DIR.mkdir(parents=True, exist_ok=True)
 
-T_LIST  = CFG["simulation"]["temperatures_K"]   # [120.0, 250.0]
-N_BINS  = CFG["simulation"]["n_bins"]
+T_LIST = CFG["simulation"]["temperatures_K"]   # [120.0, 250.0]
+N_BINS = CFG["simulation"]["n_bins"]
 N_STEPS = CFG["simulation"]["n_steps"]
+
+LABELS_SCORE = {
+    "mc_120": "MC 120 K",
+    "mc_250": "MC 250 K",
+    "md_120": "MD 120 K",
+    "md_250": "MD 250 K",
+}
 
 
 def _acceptance(traj: np.ndarray) -> float:
@@ -49,7 +57,8 @@ def run_sim(key: str, fn, T: float, seed: int) -> np.ndarray:
     t0 = time.perf_counter()
     traj = fn(T, CFG, seed=seed)
     np.save(cache, traj)
-    print(f"done in {time.perf_counter() - t0:.1f}s  |  acceptance ~ {_acceptance(traj):.1%}")
+    print(
+        f"done in {time.perf_counter() - t0:.1f}s  |  acceptance ~ {_acceptance(traj):.1%}")
     return traj
 
 
@@ -67,15 +76,18 @@ def main():
     }
 
     print("\nStatistics:")
+    early_scores = {}
     for key, traj in trajs.items():
         T = T_LIST[0] if "120" in key else T_LIST[1]
         S = exploration_entropy(traj, N_BINS)
         E = early_exploration_score(traj, N_BINS)
+        early_scores[LABELS_SCORE.get(key, key)] = E
         print(f"  {key:<8}  S(final)={S:.4f} nats   early_score={E:.4f}")
 
     print("\nGenerating plots …")
     plot_dihedral_timeseries(trajs, str(RESULTS / "dihedral_timeseries.png"))
-    plot_baseline_distributions(trajs, N_BINS, str(RESULTS / "baseline_distributions.png"))
+    plot_baseline_distributions(trajs, N_BINS, str(
+        RESULTS / "baseline_distributions.png"))
     plot_baseline_pmf(trajs, T_LIST, N_BINS, str(RESULTS / "baseline_pmf.png"))
 
     # Opportunistically load cached umbrella trajectories to show enhanced
@@ -89,10 +101,29 @@ def main():
             rng = np.random.default_rng(42)
             idx = rng.choice(len(pooled), size=N_STEPS, replace=False)
             enhanced[key] = pooled[idx]
-            print(f"  entropy plot: loaded {len(us_files)} umbrella windows for {key} (sub-sampled to {N_STEPS})")
+            print(
+                f"  entropy plot: loaded {len(us_files)} umbrella windows for {key} (sub-sampled to {N_STEPS})")
 
     plot_entropy_curves(trajs, N_BINS, str(RESULTS / "entropy_curves.png"),
                         enhanced_trajs=enhanced if enhanced else None)
+
+    # Add umbrella early-exploration scores if cached windows exist
+    for T, tag in zip(T_LIST, ["120K", "250K"]):
+        us_files = sorted(TRAJ_DIR.glob(f"us_window_{tag}_*.npy"))
+        if us_files:
+            pooled = np.concatenate([np.load(f) for f in us_files])
+            rng2 = np.random.default_rng(0)
+            idx2 = rng2.choice(len(pooled), size=N_STEPS, replace=False)
+            us_traj = pooled[idx2]
+            E_us = early_exploration_score(us_traj, N_BINS)
+            label = f"Umbrella {int(round(T))} K"
+            early_scores[label] = E_us
+            print(f"  umbrella_{int(round(T))}: early_score={E_us:.4f}")
+
+    plot_early_exploration_bar(
+        early_scores,
+        str(RESULTS / "early_exploration_scores.png"),
+    )
 
     print("\nAll baseline outputs written to results/")
 

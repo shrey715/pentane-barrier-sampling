@@ -11,6 +11,7 @@ dependencies = [
     "openmm>=8.5.1",
     "pytest>=9.0.3",
     "seaborn>=0.13.2",
+    "numba>=0.65.1",
 ]
 
 [build-system]
