@@ -85,8 +85,11 @@ def main():
         us_files = sorted(TRAJ_DIR.glob(f"us_window_{tag}_*.npy"))
         if us_files:
             key = f"umbrella_{int(round(T))}"
-            enhanced[key] = np.concatenate([np.load(f) for f in us_files])
-            print(f"  entropy plot: loaded {len(us_files)} umbrella windows for {key}")
+            pooled = np.concatenate([np.load(f) for f in us_files])
+            rng = np.random.default_rng(42)
+            idx = rng.choice(len(pooled), size=N_STEPS, replace=False)
+            enhanced[key] = pooled[idx]
+            print(f"  entropy plot: loaded {len(us_files)} umbrella windows for {key} (sub-sampled to {N_STEPS})")
 
     plot_entropy_curves(trajs, N_BINS, str(RESULTS / "entropy_curves.png"),
                         enhanced_trajs=enhanced if enhanced else None)
