@@ -78,11 +78,10 @@ n_steps           = 200000
 n_bins            = 36               # bins over [-180°, 180°]
 dt_ps             = 0.002            # MD timestep [ps]
 tau_T_ps          = 0.5              # Nosé-Hoover coupling time [ps]
-mc_delta_phi_deg  = 5.0             # max MC dihedral trial move [°]
-                                    # Chosen to match MD thermal displacement:
-                                    # at 120K, <delta_phi>_rms ~ 3-5° per step.
-                                    # This gives ~50% acceptance and correct
-                                    # trapping behaviour consistent with MD.
+dr_max_ang        = 0.05            # max single-atom Cartesian displacement [Å]
+                                    # Move: pick one atom, nudge by uniform
+                                    # random vector in [-dr_max, dr_max]^3.
+                                    # Targets ~40% acceptance at 120 K.
 
 # ── Umbrella Sampling ────────────────────────────────────────────
 [umbrella]
@@ -94,10 +93,11 @@ n_windows           = 36
 # This ensures >50% overlap between adjacent windows
 window_k_K_per_rad2 = 500.0
 n_steps_per_window  = 200000
-umbrella_mc_delta_phi_deg = 30.0    # MC step size for umbrella windows [°]
-                                    # Larger than baseline MC (5°) since the
-                                    # bias potential confines each window, so
-                                    # large moves still satisfy detailed balance.
+dr_max_ang = 0.15                   # single-atom Cartesian displacement for
+                                    # umbrella windows [Å]. Larger than baseline
+                                    # (0.05 Å) since the harmonic bias confines
+                                    # the window anyway, so larger moves help
+                                    # decorrelate within each window faster.
 
 # ── WHAM ─────────────────────────────────────────────────────────
 [wham]
